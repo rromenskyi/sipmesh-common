@@ -1,0 +1,1206 @@
+// sipmesh v1 control-plane contracts.
+//
+// Three gRPC surfaces in this file (a fourth — Pipeline, between
+// media-edge and ai-worker for streaming PCM frames — lands later):
+//   Scheduler  — sip-proxy → media-server   (call allocation)
+//   Edge       — media-server → media-edge   (call activation)
+//   Registry   — media-edge → media-server   (register + stream events)
+//
+// Audio (RTP) flows UDP-direct between the SIP caller and the assigned
+// media-edge; raw PCM frames between media-edge and ai-worker will use
+// the future Pipeline service over gRPC streaming.
+
+syntax = "proto3";
+package sipmesh.v1;
+
+option go_package = "github.com/rromenskyi/sipmesh-common/gen/go/sipmesh/v1;sipmeshv1";
+
+import "google/protobuf/timestamp.proto";
+
+// -------------------------------------------------------------------------
+// Scheduler — called by sip-proxy on inbound INVITE / BYE.
+// -------------------------------------------------------------------------
+service Scheduler {
+  rpc AllocateCall (AllocateCallRequest) returns (AllocateCallResponse);
+  rpc ReleaseCall  (ReleaseCallRequest)  returns (ReleaseCallResponse);
+  // SetCallRemote informs the edge that owns this call where to send
+  // RTP. Inbound calls don't need this (comedia learning from caller's
+  // first packet). Outbound calls need it: the proxy parses the SDP
+  // answer from the trunk and pushes the remote (ip, port) here.
+  // media-server resolves dialog → worker → forwards to Edge.SetRemote.
+  rpc SetCallRemote (SetCallRemoteRequest) returns (SetCallRemoteResponse);
+  // PublishCallSignal lets sip-proxy publish a CallEvent into the
+  // media-server's broker — used to stamp the WIRE-ACCURATE moments
+  // for ts_invite (INVITE arrival inbound / INVITE sent outbound)
+  // and ts_answered (200 OK sent inbound / 200 OK received outbound).
+  // Edge fires the same events from media-side proxies (StartCall =
+  // CallStarted, first inbound RTP = CallAnswered) — assembler keeps
+  // the EARLIEST timestamp seen across both sources so the proxy's
+  // signaling-accurate timestamp wins when wired, and the edge's
+  // approximate one is the floor when proxy is unwired (tests).
+  rpc PublishCallSignal (PublishCallSignalRequest) returns (PublishCallSignalResponse);
+  // BridgeCalls cross-wires the RTP recv loops of two existing edge
+  // calls so each leg's inbound packets become the other leg's
+  // outbound. Used by sip-proxy's register_inbound delivery path
+  // (PSTN→extension B2BUA) — the proxy AllocateCall's both legs,
+  // Originator dials the extension's Contact, then BridgeCalls links
+  // them at the edge before the proxy sends 200 OK to the caller.
+  //
+  // Slice-2 constraint: both legs MUST be on the same edge. Cross-
+  // edge bridging needs media-relay between edges (backlog). When
+  // the constraint is violated the RPC returns FailedPrecondition
+  // and the caller (proxy) maps that to 503 + tears the call down.
+  rpc BridgeCalls (BridgeCallsRequest) returns (BridgeCallsResponse);
+  // SetCallHold toggles the hold state on a call leg at the edge.
+  // When hold=true: the runner pauses bridge-relay forwarding to the
+  // peer leg (if any) and starts pumping the pre-loaded MOH clip
+  // through the active sender so the held party hears music instead
+  // of dead silence. When hold=false: bridge relay resumes, MOH stops.
+  //
+  // Used by sip-proxy's re-INVITE handler when the OTHER leg of a
+  // bridged call goes on hold (or comes off hold). For a leg with
+  // no bridge peer (solo AI/answering-machine call) the call is a
+  // no-op — flow continues uninterrupted.
+  rpc SetCallHold (SetCallHoldRequest) returns (SetCallHoldResponse);
+  // SwitchCallCodec hot-swaps the call leg's wire codec per a
+  // re-INVITE that flipped to a different payload type. The edge
+  // runner atomically updates Codec / PayloadType / bytesPerFrame,
+  // re-picks the codec-correct greeting / MOH frames, and re-inits
+  // the bridge transcoder if the call is bridged. Brief audio
+  // glitch (1-2 frames) is expected on the swap window — UAs that
+  // initiate mid-call codec change accept this.
+  rpc SwitchCallCodec (SwitchCallCodecRequest) returns (SwitchCallCodecResponse);
+}
+
+message AllocateCallRequest {
+  string caller_uri         = 1;
+  string callee_uri         = 2;
+  // Native call ID from the signaling protocol that spawned this call
+  // (SIP Call-ID, H.323 conference ID, IAX call number). Correlation only.
+  string signaling_call_id  = 3;
+  string offer_sdp          = 4;
+  // codec_hints is the caller's preference order from the SDP m-line.
+  // Used as the fallback if codec_preference is empty.
+  repeated string codec_hints = 5;
+  // codec_preference, when non-empty, OVERRIDES codec_hints for the
+  // scheduler's pick. Set by the proxy from the matched trunk's
+  // per-trunk codec_preference list (PIPELINES.md). Lets a tenant
+  // force G.722 over G.711 even when the trunk lists PCMA first.
+  repeated string codec_preference = 7;
+  // codec_allowed, when non-empty, restricts the scheduler's pick to
+  // codecs in this set — applied as a filter to BOTH codec_hints and
+  // codec_preference before the order rules run. Set by the proxy
+  // from the matched trunk's codec_allowed whitelist. Empty = no
+  // filter. Distinct from codec_preference: preference is ORDER,
+  // allowed is SET. See trunkmgr.Trunk.CodecAllowed.
+  repeated string codec_allowed = 10;
+  // trunk_id is the matched trunk's stable identifier. Stored on
+  // the dialog row so operators can tell which trunk a call came
+  // in via in multi-trunk deployments. Empty = legacy single-trunk.
+  string trunk_id           = 8;
+  // direction is who initiated the call. "inbound" = trunk →
+  // sip-proxy UAS (caller dialed our DID). "outbound" = sipmesh
+  // Originator → trunk (we placed the call). Stored on the dialog
+  // row + surfaced on CDRs so post-hoc analysis can split by
+  // direction without guessing from URI patterns.
+  string direction          = 9;
+  // outbound_pipeline, on direction=outbound calls, names the flow
+  // the OUTBOUND leg should run instead of falling through to
+  // CALL_FLOW_UNSPECIFIED. Used by DialStep's optional pipeline
+  // field for screen-call patterns ("Press 1 to accept, 2 to
+  // block"). Inbound calls ignore this — they go through route
+  // matching as normal. Empty = legacy bridge-target behaviour.
+  string outbound_pipeline = 11;
+  // caller_address_family is "v4", "v6", or empty. Extracted by the
+  // proxy from the offer's c= line and passed through so the
+  // scheduler picks an edge that advertises the matching family
+  // (and returns the matching v4/v6 IP in rtp_advertise_ip). Empty
+  // means the proxy didn't see a usable c= line — scheduler falls
+  // back to whatever family the picked edge has set.
+  string caller_address_family = 12;
+
+  // wants_webrtc is set by the proxy when the offer carries WebRTC
+  // markers (RTP/SAVPF profile, a=ice-ufrag, a=fingerprint). When
+  // true, the edge runs in ICE-Lite mode (RFC 8445 §2.4) for this
+  // call: generates per-call ICE credentials, responds to STUN
+  // binding requests, terminates DTLS-SRTP. The scheduler propagates
+  // the flag to Edge.StartCall and surfaces the edge-generated ICE
+  // creds + DTLS fingerprint in AllocateCallResponse so the proxy
+  // can stamp them into the SDP answer.
+  //
+  // Off (default) keeps the legacy plain-RTP/AVP path — browser
+  // offers don't reach this code path through the regular trunk
+  // listeners; only register_inbound (REGISTER over WSS) does.
+  bool wants_webrtc = 13;
+
+  // remote_ice_ufrag / remote_ice_pwd are the browser-supplied
+  // credentials from the offer's `a=ice-ufrag:` / `a=ice-pwd:`
+  // attributes. Logged for correlation; ICE-Lite servers don't
+  // initiate connectivity checks so we don't actually use them
+  // for outbound STUN signing today (RFC 8445 §6.1.4).
+  string remote_ice_ufrag = 14;
+  string remote_ice_pwd   = 15;
+}
+
+message AllocateCallResponse {
+  string internal_call_id  = 1;  // sipmesh UUID; proxy uses this in ReleaseCall
+  string rtp_advertise_ip  = 2;  // IP to put in SDP c= line
+  uint32 rtp_port          = 3;
+  string codec             = 4;  // chosen: PCMU|PCMA|opus
+  uint32 payload_type      = 5;
+  string reject_reason     = 6;  // set if allocation failed
+
+  // ICE-Lite credentials the edge generated for this call. Populated
+  // only when AllocateCallRequest.wants_webrtc was true. Proxy stamps
+  // them as `a=ice-ufrag:` / `a=ice-pwd:` in the SDP answer.
+  string ice_ufrag         = 7;
+  string ice_pwd           = 8;
+  // ice_candidates are SDP-formatted `a=candidate:` lines (RFC 8839
+  // §5.1) the edge built from its public IP + bound RTP port. Proxy
+  // emits them verbatim into the answer so the browser can target
+  // its STUN connectivity checks.
+  repeated string ice_candidates = 9;
+  // dtls_fingerprint is the SHA-256 fingerprint of the edge's DTLS
+  // cert, formatted "XX:YY:ZZ:..." (RFC 4572 §5). Proxy stamps it as
+  // `a=fingerprint:sha-256 ...` in the SDP answer. Browser validates
+  // the peer cert in the DTLS handshake against this fingerprint.
+  string dtls_fingerprint  = 10;
+
+  // answer_delay_ms is the pre-answer ringing window (in milliseconds)
+  // resolved by the scheduler from the matched route's
+  // [answer_delay.min, answer_delay.max] range. 0 = no delay (legacy
+  // behaviour, immediate 200 OK). When > 0 the proxy emits 180
+  // Ringing right after this AllocateCall returns, sleeps the
+  // configured ms, then sends 200 OK. Random per-call value lives
+  // here (resolved at Match time in the route engine) so two
+  // identical INVITEs yield independent delays — humanises an
+  // AI-bot answer pattern. CANCEL during the wait short-circuits
+  // via the existing cancellation race check; sipgo's transaction
+  // layer emits 487 to the A-leg.
+  uint32 answer_delay_ms   = 11;
+
+  // reject_mode is the probabilistic-rejection outcome resolved
+  // per call from the matched route's reject.busy_pct /
+  // reject.silent_pct. Encoded as a uint32 enum (0=none, 1=busy,
+  // 2=silent) so it crosses the wire without an extra proto
+  // message. When non-zero the scheduler skipped media-slot
+  // allocation entirely — sip-proxy honours the rejection BEFORE
+  // any 200 OK / dialog insert. See router.RejectMode for the
+  // numeric mapping.
+  uint32 reject_mode        = 12;
+  // reject_silent_timeout_ms is the maximum 180 Ringing hold the
+  // proxy honours when reject_mode == 2 (silent). After this
+  // window with no CANCEL from the carrier, the proxy itself
+  // sends 408 Request Timeout to free its goroutine. Only
+  // meaningful when reject_mode == 2.
+  uint32 reject_silent_timeout_ms = 13;
+}
+
+message ReleaseCallRequest {
+  string internal_call_id = 1;
+  string reason           = 2;  // "bye"|"cancel"|"timeout"|"error"
+}
+
+// PublishCallSignalRequest is what sip-proxy sends to record
+// signaling moments on the CDR. Carries an explicit ts so the
+// stamp reflects when the SIGNAL happened on the wire, not when
+// the RPC arrived at media-server (tens of ms drift on a busy
+// network). Today's signal kinds: invite (T0), answered (200 OK).
+message PublishCallSignalRequest {
+  string                    internal_call_id = 1;
+  google.protobuf.Timestamp ts               = 2;
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_INVITE      = 1;  // INVITE arrived (inbound) / sent (outbound)
+    KIND_ANSWERED    = 2;  // 200 OK sent (inbound) / received (outbound)
+  }
+  Kind kind = 3;
+}
+message PublishCallSignalResponse {}
+message ReleaseCallResponse {}
+
+message SetCallRemoteRequest {
+  string internal_call_id = 1;
+  string remote_ip        = 2;
+  uint32 remote_port      = 3;
+}
+message SetCallRemoteResponse {}
+
+message BridgeCallsRequest {
+  // The two existing edge-allocated calls to wire together. Order
+  // doesn't matter; the bridge is bidirectional.
+  string internal_call_id_a = 1;
+  string internal_call_id_b = 2;
+}
+message BridgeCallsResponse {}
+
+// HoldMode is the per-leg hold state. Two non-OFF modes because the
+// holder and the holdee need different behaviour during a bridged
+// hold:
+//
+//   alice holds bob:
+//     alice's leg → MUTE (her outgoing relay is dropped so bob
+//                  doesn't hear her; her UA already mutes locally,
+//                  so no MOH from us either)
+//     bob's leg   → MOH  (his outgoing relay is dropped so alice
+//                  doesn't hear him; we pump MOH to him so he
+//                  doesn't think the call dropped)
+//
+// SOLO calls (no bridge peer) ignore MUTE entirely and treat MOH as
+// "pause greeting/TTS, pump MOH clip" — useful for flow steps that
+// want to put the caller on temporary hold while a backend runs.
+enum HoldMode {
+  HOLD_MODE_OFF  = 0;  // normal call, no hold action
+  HOLD_MODE_MUTE = 1;  // drop outgoing bridge relay; no MOH playback
+  HOLD_MODE_MOH  = 2;  // drop outgoing bridge relay; pump MOH clip
+}
+
+message SetCallHoldRequest {
+  string   internal_call_id = 1;
+  HoldMode mode             = 2;
+}
+message SetCallHoldResponse {}
+
+message SwitchCallCodecRequest {
+  string internal_call_id = 1;
+  string codec            = 2;  // PCMU | PCMA | G722 | G729
+  uint32 payload_type     = 3;
+}
+message SwitchCallCodecResponse {}
+
+// -------------------------------------------------------------------------
+// Edge — called by media-server towards a media-edge to activate a call.
+// -------------------------------------------------------------------------
+service Edge {
+  rpc StartCall  (StartCallRequest)  returns (StartCallResponse);
+  rpc CancelCall (CancelCallRequest) returns (CancelCallResponse);
+  // SetRemote tells the per-call runner where to send RTP. For inbound
+  // calls comedia learning works fine (we send back to whoever sent us
+  // the first packet). For outbound calls we know the destination
+  // upfront from the SDP answer; SetRemote unblocks the active sender
+  // so the greeting starts flowing immediately on ACK rather than
+  // waiting for the callee's first frame.
+  rpc SetRemote  (SetRemoteRequest)  returns (SetRemoteResponse);
+
+  // TapCall streams every RTP packet flowing through the specified
+  // call (both directions) for as long as the caller stays
+  // connected. Zero-copy-adjacent: the edge duplicates the packet
+  // bytes into the stream without parsing RTP, so even malformed /
+  // non-RTP payloads show up verbatim for post-hoc Wireshark
+  // analysis. Unknown call id → NotFound. Bounded per-call queue;
+  // a slow consumer drops frames rather than back-pressuring the
+  // production audio path.
+  rpc TapCall (TapCallRequest) returns (stream TapFrame);
+  // BridgeCalls cross-wires the RTP recv loops of two CallRunners on
+  // THIS edge so each leg's inbound packets become the other leg's
+  // outbound. Both legs MUST be on this same edge — caller (media-
+  // server's Scheduler.BridgeCalls) is responsible for routing the
+  // request to the edge that owns both calls. Returns NotFound when
+  // either call is missing on this edge.
+  rpc BridgeCalls (EdgeBridgeCallsRequest) returns (EdgeBridgeCallsResponse);
+  // SetCallHold toggles the runner's hold flag for one call. On
+  // hold=true: bridge-relay packet copy pauses (if bridge wired);
+  // active sender starts pumping the pre-encoded MOH clip looped.
+  // On hold=false: relay resumes, MOH active sender stops.
+  rpc SetCallHold (EdgeSetCallHoldRequest) returns (EdgeSetCallHoldResponse);
+  // SwitchCallCodec atomically swaps the runner's wire codec.
+  // See Scheduler.SwitchCallCodec for semantics.
+  rpc SwitchCallCodec (EdgeSwitchCallCodecRequest) returns (EdgeSwitchCallCodecResponse);
+}
+
+enum CallFlow {
+  CALL_FLOW_UNSPECIFIED       = 0;
+  CALL_FLOW_ANSWERING_MACHINE = 1;  // MVP: play greeting, record caller
+  CALL_FLOW_AI_VOICE_BOT      = 2;  // later: STT / LLM / TTS pipeline
+}
+
+message StartCallRequest {
+  string   internal_call_id = 1;
+  CallFlow flow             = 2;
+  string   greeting_ref     = 3;  // path or URI; blank = default
+  string   caller_uri       = 4;
+  // Field 5 was rtp_port — now allocated by the edge itself and
+  // returned in StartCallResponse.rtp_port. Left reserved to keep
+  // wire compatibility for any older client still setting it.
+  reserved 5;
+  reserved "rtp_port";
+  string   codec            = 6;
+  uint32   payload_type     = 7;
+  // ai_worker_addr (set when flow == CALL_FLOW_AI_VOICE_BOT) will be
+  // added once the ai-worker plane is wired.
+
+  // Name of the Flow the edge should run for this call. Looked up in
+  // the edge's local flows.yaml (transitional; will move to ConfigSet
+  // push when PIPELINES Chunk D-full lands). Empty = edge picks its
+  // built-in default Flow (a tiny "service not configured" greeting
+  // + immediate hangup, so a brand-new edge never silent-fails on a
+  // call). Populated by the media-server Scheduler after route
+  // matching (Chunk D-mini).
+  string pipeline_name = 8;
+  // is_outbound is set on outbound originations (DialStep, sipmeshctl
+  // call originate). Edge uses it to suppress the static greeting
+  // pump on bridge-target legs that have no pipeline — without this
+  // 1-2 RTP frames of greeting could leak between SetRemote unblocking
+  // the active sender and BridgeStep wiring bridgePeer (active sender
+  // skips writes once bridgePeer is set, but the race window is
+  // bounded only by goroutine scheduling). With pipeline_name set on
+  // outbound, the pipeline drives audio explicitly and this flag is
+  // moot. Inbound legs IGNORE this field — they always greet.
+  bool is_outbound = 9;
+
+  // wants_webrtc, when true, makes the edge run this call in ICE-Lite
+  // mode: generates per-call ufrag/pwd, demuxes STUN binding requests
+  // off the rtcp-mux'd RTP socket, replies with binding-success per
+  // RFC 8445. The DTLS-SRTP handshake termination is the same socket
+  // (RFC 7983 demux table). Mirrors AllocateCallRequest.wants_webrtc.
+  bool wants_webrtc = 10;
+  // remote_ice_ufrag / remote_ice_pwd echo the browser's offer creds.
+  // ICE-Lite doesn't initiate outbound STUN, so these are recorded
+  // for correlation/logging today; future full-ICE mode would use
+  // them to sign outbound binding requests.
+  string remote_ice_ufrag = 11;
+  string remote_ice_pwd   = 12;
+}
+message StartCallResponse {
+  // Port the edge bound for this call, picked from its local pool.
+  // Scheduler uses this to populate the dialog row + the SDP answer
+  // it returns to the proxy. Eliminates the Redis port rotation and
+  // the cross-process port-busy retry loop.
+  uint32 rtp_port = 1;
+
+  // ICE-Lite outputs — populated only when StartCallRequest.wants_webrtc
+  // was true. Edge generates ufrag+pwd per call (4-byte hex / 18-byte
+  // base64 random — well above RFC 8445 §5.3 floor) and assembles a
+  // single `host` candidate (RFC 8839 §5.1) from its RTP_PUBLIC_IP +
+  // bound port. Scheduler propagates these onwards as
+  // AllocateCallResponse fields.
+  string ice_ufrag = 2;
+  string ice_pwd   = 3;
+  repeated string ice_candidates = 4;
+  // dtls_fingerprint is the SHA-256 of the edge's DTLS cert, hex-
+  // colon formatted per RFC 4572 §5 (e.g. "AB:CD:..."). Edge gens
+  // a self-signed cert at boot if no operator-supplied DTLS cert
+  // exists, so the fingerprint stays stable across calls in one
+  // process lifetime.
+  string dtls_fingerprint = 5;
+}
+
+message CancelCallRequest {
+  string internal_call_id = 1;
+  string reason           = 2;
+}
+message CancelCallResponse {}
+
+message SetRemoteRequest {
+  string internal_call_id = 1;
+  string remote_ip        = 2;
+  uint32 remote_port      = 3;
+}
+message SetRemoteResponse {}
+
+message EdgeBridgeCallsRequest {
+  string internal_call_id_a = 1;
+  string internal_call_id_b = 2;
+}
+message EdgeBridgeCallsResponse {}
+
+message EdgeSetCallHoldRequest {
+  string   internal_call_id = 1;
+  HoldMode mode             = 2;
+}
+message EdgeSetCallHoldResponse {}
+
+message EdgeSwitchCallCodecRequest {
+  string internal_call_id = 1;
+  string codec            = 2;
+  uint32 payload_type     = 3;
+}
+message EdgeSwitchCallCodecResponse {}
+
+enum TapDirection {
+  TAP_DIRECTION_UNSPECIFIED = 0;
+  TAP_DIRECTION_IN          = 1;  // trunk → edge
+  TAP_DIRECTION_OUT         = 2;  // edge → trunk
+}
+
+message TapCallRequest {
+  string internal_call_id = 1;
+}
+
+// TapFrame is a single RTP packet as observed by the edge. Fields
+// are enough for pcap-of-IPv4/UDP reconstruction in sipmeshctl: we
+// know the edge's bound port, the peer's (addr, port), and the
+// exact payload bytes. Timestamp is the edge's wall-clock at the
+// moment of send/recv (nanos).
+message TapFrame {
+  int64        ts_unix_ns = 1;
+  TapDirection direction  = 2;
+  bytes        rtp_packet = 3;   // full RTP packet (header + payload)
+  // For IN: peer = RTP source observed on the wire. For OUT: peer
+  // = RTP destination we wrote to. Format: "ip:port".
+  string       peer_addr  = 4;
+  // The edge's locally-bound port for this call. Constant across
+  // the life of the call.
+  uint32       local_port = 5;
+}
+
+// -------------------------------------------------------------------------
+// Registry — bidi-stream from worker, and event stream for call telemetry.
+// (Today only media-edge registers. When ai-worker lands, it will register
+// through the same surface — WorkerHello.kind disambiguates.)
+// -------------------------------------------------------------------------
+service Registry {
+  // Worker opens this on startup and keeps it alive. Hellos carry both
+  // capability info (first message) and heartbeats (subsequent messages).
+  rpc Register (stream WorkerHello) returns (stream WorkerAck);
+
+  // Per-call lifecycle / telemetry events pushed by the worker.
+  rpc CallEvents (stream CallEvent) returns (CallEventsAck);
+}
+
+message WorkerHello {
+  string worker_id        = 1;
+  string grpc_addr        = 2;  // addr media-server can dial the worker on
+  string rtp_public_ip    = 3;  // edge: v4 advertise IP for SDP c=; empty if v6-only edge
+  uint32 rtp_port_min     = 4;
+  uint32 rtp_port_max     = 5;
+  uint32 max_concurrent   = 6;
+  uint32 active_calls     = 7;  // updated each heartbeat
+  string version          = 8;
+  bool   is_heartbeat     = 9;  // true for all but the first message
+  // last_rtt_ns is the wall-clock the worker measured for the previous
+  // hello → ack round trip. 0 = no prior round trip (first hello, or
+  // last ack timed out). Reported best-effort; the worker doesn't
+  // retry to refresh a stale value. Surfaced in the debug UI as
+  // "real" worker latency vs. the wall-clock-since-last-hello age.
+  int64  last_rtt_ns      = 10;
+  // rtp_public_ip_v6 is the edge's IPv6 advertise address — empty when
+  // the edge runs on a v4-only host. At least one of rtp_public_ip /
+  // rtp_public_ip_v6 must be non-empty (validated server-side on
+  // Register). Scheduler picks the matching family at AllocateCall
+  // time based on the offer's connection address.
+  string rtp_public_ip_v6 = 11;
+  // kind will distinguish edge from ai-worker once the latter lands.
+}
+
+message WorkerAck {
+  bool   accepted       = 1;
+  string reject_reason  = 2;
+}
+
+message CallEvent {
+  string                         internal_call_id = 1;
+  google.protobuf.Timestamp      ts               = 2;
+  oneof kind {
+    CallStarted          started          = 10;
+    CallAnswered         answered         = 11;
+    CallRecordingDone    recording_done   = 12;
+    CallEnded            ended            = 13;
+    CallTranscript       transcript       = 14;
+    CallDTMF             dtmf             = 15;
+    // DialogAction asks sip-proxy to perform an in-dialog SIP
+    // operation on this call. The edge stays SIP-naive: it picks
+    // a high-level intent (Hangup / Reoffer / Info / Refer) and
+    // sip-proxy translates it to the right SIP method based on
+    // dialog state. media-server forwards every DialogAction onto
+    // a pub/sub bus so any sip-proxy replica can pick it up.
+    DialogAction         dialog_action    = 16;
+  }
+}
+
+// DialogAction is the edge → sip-proxy in-dialog control envelope.
+// One oneof per intent. Adding a new intent (REFER for transfer,
+// re-INVITE for hold/codec change, INFO for DTMF) means another
+// oneof entry — the wire path (CallEvents → bus → DialogController)
+// stays the same. Idempotent — duplicate deliveries are tolerated.
+message DialogAction {
+  oneof kind {
+    DialogHangup     hangup     = 1;
+    // Reserved for upcoming work — not yet emitted by edge:
+    //   DialogReoffer reoffer = 2;  // re-INVITE w/ new SDP (codec change, hold)
+    //   DialogSendInfo info    = 3; // INFO body (DTMF / app-level)
+    //   DialogRefer    refer   = 4; // REFER (call transfer)
+  }
+}
+
+// DialogHangup tells sip-proxy to terminate the call. sip-proxy
+// looks at the persisted dialog state and chooses BYE (when the
+// dialog is established) or CANCEL (when an INVITE transaction is
+// still in flight). Edge does not know which, by design.
+message DialogHangup {
+  // Free-text reason for logging / metric labelling. Examples:
+  // "max_turns", "max_fallbacks", "voicemail_recorded",
+  // "intent_handled".
+  string reason = 1;
+}
+
+message CallStarted       {}
+message CallAnswered      {}
+message CallRecordingDone { string uri = 1; uint64 bytes = 2; uint32 duration_ms = 3; }
+message CallEnded {
+  string reason      = 1;
+  uint32 duration_ms = 2;
+  // RTP quality summary measured by the worker over the call's
+  // lifetime. All fields are best-effort: jitter / loss require >=5
+  // inbound packets to produce meaningful numbers; below that they
+  // are zero. Outbound counters cover every send path on the worker
+  // (active sender, comedia echo, NAT-keepalive).
+  double jitter_ms              = 3; // RFC 3550 §6.4.1 smoothed jitter
+  double loss_pct               = 4; // 0..100
+  uint64 inbound_packets        = 5;
+  uint64 inbound_payload_bytes  = 6;
+  uint64 outbound_packets       = 7;
+  uint64 outbound_payload_bytes = 8;
+  uint64 expected_packets       = 9; // extLastSeq - extFirstSeq + 1
+  // custom_fields are arbitrary key/value annotations the flow
+  // stamped via SetCustomFieldStep — post-call quality ratings,
+  // pipeline branch markers, A/B arms, etc. The CDR assembler
+  // folds them under a top-level `custom_fields` object on the
+  // jsonl record. Empty when the flow set none.
+  map<string, string> custom_fields = 10;
+}
+
+message CallEventsAck {}
+
+// -------------------------------------------------------------------------
+// Admin — operator-facing introspection + forced state changes on the
+// media-server. Runs on a separate listener (ADMIN_LISTEN) so cluster
+// operators can front it with whatever auth policy they want without
+// touching the production Scheduler / Registry surfaces.
+// -------------------------------------------------------------------------
+service Admin {
+  // Read-only introspection.
+  rpc ListCalls      (ListCallsRequest)      returns (ListCallsResponse);
+  rpc DescribeCall   (DescribeCallRequest)   returns (CallDetail);
+  rpc ListWorkers    (ListWorkersRequest)    returns (ListWorkersResponse);
+  rpc DescribeWorker (DescribeWorkerRequest) returns (WorkerDetail);
+
+  // Live observation. The stream fans out every CallEvent the
+  // media-server hears on Registry.CallEvents (from every edge) to
+  // every subscriber. Server never errors on slow subscribers — it
+  // drops events and marks a counter. Clients that care about loss
+  // MUST rely on the per-subscriber queue size (bounded; see
+  // AdminService.subscribeBufSize). Typical use: follow one call in
+  // real time; cross-correlate with Jaeger waterfall for latency.
+  rpc SubscribeEvents (SubscribeEventsRequest) returns (stream CallEvent);
+
+  // Destructive — see RPC-level comments; CLI gates these behind
+  // --confirm.
+  rpc ForceReleaseCall (ForceReleaseCallRequest) returns (ForceReleaseCallResponse);
+  rpc DrainWorker      (DrainWorkerRequest)      returns (DrainWorkerResponse);
+
+  // TapCall is a relay on top of Edge.TapCall: Admin resolves the
+  // call's owning worker via the dialog row + worker registry, dials
+  // that edge, and pipes TapFrames back to the operator. Saves the
+  // operator from having to figure out which edge to dial themselves.
+  rpc TapCall (AdminTapCallRequest) returns (stream TapFrame);
+}
+
+message AdminTapCallRequest {
+  string internal_call_id = 1;
+}
+
+// -------------------------------------------------------------------------
+// SipTrace — on each sip-proxy replica, streams every SIP request
+// received and response sent, with raw wire bytes. Exposed on the
+// proxy's own gRPC listener (SIP_TRACE_LISTEN) so operators can
+// attach directly to a specific proxy without routing through
+// media-server. Typical use: during bring-up against a real trunk,
+// watch the INVITE → 401 → REGISTER-Auth → 200 dance live.
+// -------------------------------------------------------------------------
+service SipTrace {
+  rpc Subscribe (SipTraceRequest) returns (stream SipTraceMessage);
+}
+
+enum SipDirection {
+  SIP_DIRECTION_UNSPECIFIED = 0;
+  SIP_DIRECTION_RX          = 1;  // proxy received
+  SIP_DIRECTION_TX          = 2;  // proxy sent
+}
+
+message SipTraceRequest {
+  // Optional filter. Empty = all messages.
+  string call_id = 1;
+}
+
+message SipTraceMessage {
+  int64        ts_unix_ns = 1;
+  SipDirection direction  = 2;
+  // Raw SIP wire bytes including headers + body. UTF-8, newline-
+  // terminated per RFC 3261. Up to operator / Wireshark to parse.
+  bytes        wire       = 3;
+  // Peer for the message — "ip:port". For RX, source; for TX,
+  // destination.
+  string       peer_addr  = 4;
+  // Call-ID extracted up front so server-side filter works without
+  // re-parsing the wire. Empty = unknown (shouldn't happen on
+  // well-formed traffic).
+  string       call_id    = 5;
+}
+
+message SubscribeEventsRequest {
+  // Optional filter. Empty = all events. Non-empty = only events
+  // whose internal_call_id exactly matches. Filtering happens
+  // server-side so a tap of one call doesn't pay the cross-talk
+  // bandwidth of a busy cluster.
+  string internal_call_id = 1;
+}
+
+message ListCallsRequest {
+  // Optional: if set, only dialogs that belong to this worker_id are
+  // returned. Empty = whole cluster.
+  string worker_id = 1;
+  // Cap on how many dialogs to return. 0 = unlimited (bounded in
+  // practice by the server's walk budget).
+  uint32 limit = 2;
+}
+message ListCallsResponse {
+  repeated CallSummary calls = 1;
+}
+
+message CallSummary {
+  string internal_call_id   = 1;
+  string signaling_call_id  = 2;
+  string worker_id          = 3;
+  string caller_uri         = 4;
+  string callee_uri         = 5;
+  string codec              = 6;
+  uint32 rtp_port           = 7;
+  int64  created_unix_ns    = 8;
+  int64  last_touch_unix_ns = 9;
+}
+
+message DescribeCallRequest  { string internal_call_id = 1; }
+message CallDetail {
+  CallSummary   call   = 1;
+  WorkerSummary worker = 2;  // resolved from call.worker_id; may be zero if worker has gone
+}
+
+message ListWorkersRequest {
+  // Optional: if true, include workers whose hash has TTL'd out but
+  // still appear in the ZSET (usually pruned lazily).
+  bool include_stale = 1;
+}
+message ListWorkersResponse { repeated WorkerSummary workers = 1; }
+
+message WorkerSummary {
+  string id                       = 1;
+  string grpc_addr                = 2;
+  string rtp_public_ip            = 3;
+  uint32 rtp_port_min             = 4;
+  uint32 rtp_port_max             = 5;
+  uint32 max_concurrent           = 6;
+  uint32 active_calls             = 7;
+  string version                  = 8;
+  int64  last_heartbeat_unix_ns   = 9;
+  string rtp_public_ip_v6         = 10;
+  // interop_capable is derived: true iff the worker has both v4 and
+  // v6 advertise IPs, so it can terminate a v4 leg and a v6 leg of
+  // the same call on one media-edge. With BridgeRunners family-blind
+  // at the data plane, this flag is what tells operators "this edge
+  // can serve a v4↔v6 interop call". Sent on the wire as a derived
+  // field so JSON / sipmeshctl callers don't have to recompute it.
+  bool   interop_capable          = 11;
+}
+
+message DescribeWorkerRequest  { string worker_id = 1; }
+message WorkerDetail {
+  WorkerSummary   worker = 1;
+  repeated string calls  = 2;  // internal_call_ids currently on this worker
+}
+
+// ForceReleaseCall is what fixes stuck allocations when a BYE never
+// arrived and DIALOG_TTL is still a long way off. Runs the same
+// teardown path as Scheduler.ReleaseCall (DeleteDialog + ReleaseSlot
+// + Edge.CancelCall), so it is idempotent if the call has already
+// been cleaned up.
+message ForceReleaseCallRequest {
+  string internal_call_id = 1;
+  string reason           = 2;  // audited in the log; default "admin"
+}
+message ForceReleaseCallResponse {
+  bool   found           = 1;
+  string prior_worker_id = 2;
+}
+
+// DrainWorker flips MaxConcurrent to 0 on the worker row so the
+// scheduler stops admitting new calls there. Existing calls ride
+// to their natural BYE. Use for rolling upgrades or targeted
+// quarantines.
+message DrainWorkerRequest  { string worker_id = 1; }
+message DrainWorkerResponse { bool found = 1; }
+
+// -------------------------------------------------------------------------
+// ProxyControl — runs on each sip-proxy replica next to SipTrace. Lets
+// operators (and, later, the pipeline manager) ask THIS proxy to place
+// outbound calls through its registered trunk. Proxy owns the SIP UAC
+// state machine, so origination logically belongs here rather than on
+// media-server's Admin.
+// -------------------------------------------------------------------------
+service ProxyControl {
+  // OriginateCall is synchronous: it blocks until the trunk emits a
+  // final response (2xx / 4xx / 5xx / 6xx) or the deadline fires.
+  // On 2xx the call is fully established (ACK sent, edge has remote);
+  // on non-2xx the call is torn down before the RPC returns and the
+  // returned internal_call_id is empty.
+  rpc OriginateCall (OriginateCallRequest) returns (OriginateCallResponse);
+
+  // GetCPSStatus reports the live state of THIS proxy replica's
+  // per-IP CPS governor + concurrent-cap limiter. Operators inspect
+  // it via `sipmeshctl trunks limits` to see which carrier IPs are
+  // queueing right now and how much budget is left. Read-only;
+  // requires the same Bearer-token API-key as OriginateCall.
+  rpc GetCPSStatus (GetCPSStatusRequest) returns (GetCPSStatusResponse);
+
+  // GetClientEndpoints returns connection details for client-side
+  // SIP UAs (browser softphones over WSS, native UAs, etc.) so
+  // consumers don't hardcode deployment-specific URLs. Frontend
+  // BFFs call this once at session start and pass the result to
+  // the browser; switching from dev → prod or 7443 → 443 is a
+  // chart values change with no client-side code touch.
+  //
+  // Empty fields = "not exposed by this deployment". Frontend
+  // should degrade gracefully — e.g. if SipWssUrl is empty,
+  // softphone is unavailable and the UI should reflect that.
+  rpc GetClientEndpoints (GetClientEndpointsRequest) returns (GetClientEndpointsResponse);
+}
+
+message OriginateCallRequest {
+  // Callee is whatever the trunk expects in the Request-URI / To.
+  // Most providers accept a bare DID number ("12125551234"); some need
+  // a full sip:user@host. We pass it through verbatim — operator's
+  // problem to format correctly for their trunk.
+  string callee = 1;
+  // Codec hints, ordered. Empty = ["PCMU"].
+  repeated string codec_hints = 2;
+  // trunk_id selects which trunk to send through in multi-trunk
+  // deploys (trunkmgr.Registry.ForID lookup). Empty = first trunk
+  // in stable id order (deterministic single-trunk behavior).
+  string trunk_id = 3;
+  // outbound_pipeline names a flow to run on the outbound leg —
+  // typically a screen-call pipeline that gates the bridge with
+  // a DTMF prompt. Empty = legacy "no flow on outbound" path
+  // (bridge-target media transit).
+  string outbound_pipeline = 4;
+  // caller_id_user / caller_id_display, when non-empty, override the
+  // From-header user / display name on the outbound INVITE. Used by
+  // DialStep so a flow can pick the Caller-ID dynamically per call
+  // (e.g. local-presence: present a NYC DID when calling +1212...).
+  // Empty fall back to the trunk's registered identity (legacy).
+  string caller_id_user    = 5;
+  string caller_id_display = 6;
+  // operator_group_trunk, when non-empty, switches origination from
+  // "single trunk → callee" to "register_inbound trunk → operator
+  // group fan-out". The proxy resolves Trunk.OperatorGroupUsers()
+  // for the named trunk, gathers every registered binding for those
+  // users, and fans out parallel INVITEs (RFC 5626 multi-Contact
+  // shape, scaled across users). First 2xx wins; the rest get
+  // CANCEL + race-window proactive BYE. `callee` and `trunk_id` are
+  // ignored when this is set.
+  //
+  // Use for hunt-group dialing from a flow: customer call running on
+  // edge → DialStep with OperatorGroupTrunk="phones" → every
+  // registered operator's WebRTC tab rings → first to answer wins
+  // → BridgeStep mirrors RTP between customer and operator.
+  string operator_group_trunk = 7;
+
+  // invite_timeout_ms caps the wall-clock from INVITE-on-the-wire
+  // to either a final SIP response or the deadline firing. Single
+  // origination AND operator-group fan-out both honour it: the
+  // dispatcher's invite-timer is the originator's per-attempt
+  // ctx.WithTimeout. Use to shorten the default (60s) for AI-flow
+  // dial-out where you want to fall through to voicemail quickly,
+  // or to extend it for enterprise PBX trunks that ring 180s+.
+  //
+  // Operator-group fan-out: this is the per-call cap on the
+  // dispatcher's "wait for any 2xx OR all finals" loop. Without
+  // it, silent siblings push the whole fanout past the gRPC ctx
+  // deadline (one early-2xx winner doesn't help if other legs
+  // never respond and the dispatcher waits all-N).
+  //
+  // 0 / unset = use the trunk-config default (OUTBOUND_INVITE_
+  // TIMEOUT, default 60s on the proxy). Capped at 5min on the
+  // server side — anything longer is a config bug.
+  uint32 invite_timeout_ms = 8;
+}
+
+message OriginateCallResponse {
+  // Set on 2xx; empty on failure. Use it for follow-up Admin.* calls
+  // (DescribeCall, ForceReleaseCall, TapCall).
+  string internal_call_id = 1;
+  // Final SIP status code (e.g. 200, 404, 486, 503, 487 on cancel).
+  uint32 sip_status        = 2;
+  // SIP reason phrase for human display.
+  string sip_reason        = 3;
+  // Codec the trunk picked from our offer. Empty on non-2xx.
+  string codec             = 4;
+}
+
+// GetCPSStatusRequest is empty — the proxy reports every carrier IP
+// it currently has a bucket for. Future revisions may add a filter
+// by trunk_id or key prefix; today it returns the whole snapshot.
+message GetCPSStatusRequest {}
+
+// CPSBucket reports one carrier IP's CPS governor state.
+message CPSBucket {
+  // Key is the canonical "host:port" the bucket is keyed by
+  // (NormalizeKey(host, port, transport) on the proxy side).
+  string key       = 1;
+  // Cps is the configured rate cap (tokens per second).
+  double cps       = 2;
+  // Available tokens at snapshot time. Floats because the bucket
+  // accrues fractional tokens between Acquires.
+  double available = 3;
+}
+
+// ConcurrencyBucket reports one carrier IP's in-flight cap state.
+message ConcurrencyBucket {
+  // Key is the canonical "host:port".
+  string key     = 1;
+  // Cap is the configured `max_concurrent` cap.
+  uint32 cap     = 2;
+  // Current is the in-flight count at snapshot time.
+  uint32 current = 3;
+  // Waiting is the queued-Acquire count (originates blocked on cap).
+  uint32 waiting = 4;
+}
+
+message GetCPSStatusResponse {
+  // Cps lists per-IP rate-limiter buckets in stable key order.
+  // Empty when no trunk has cps_limit configured.
+  repeated CPSBucket cps                  = 1;
+  // Concurrency lists per-IP in-flight-cap buckets in stable key
+  // order. Empty when no trunk has max_concurrent configured.
+  repeated ConcurrencyBucket concurrency  = 2;
+}
+
+// -------------------------------------------------------------------------
+// Pipeline — between media-edge and ai-worker. Two RPCs separately rather
+// than one bidi stream so the edge orchestrates turn-taking explicitly:
+//
+//   1. Synthesize:  text → audio bytes (TTS, one-shot per utterance)
+//   2. Transcribe:  stream of caller PCM → final transcript (STT,
+//                   server-streaming; ai-worker may emit partials but
+//                   v1 only consumes the final)
+//
+// LLM-driven follow-up dialogue lands in v1.5 (see PIPELINES.md). The
+// edge plays one greeting, listens to one response, plays one outcome
+// clip, hangs up — that's the full v1 turn.
+// -------------------------------------------------------------------------
+service Pipeline {
+  rpc Synthesize (SynthesizeRequest) returns (SynthesizeResponse);
+  rpc Transcribe (stream AudioFrame) returns (stream TranscribeResponse);
+  // Chat — single-shot text-in/text-out call to the configured LLM
+  // backend (OllamaLLM is the only v1 plugin). The edge owns the
+  // multi-turn history; the request carries the full conversation
+  // every time, exactly as ollama / openai expect. Unary, not
+  // streaming — v1 waits for full completion before TTS kicks in.
+  // Streaming partial tokens (for token-by-token TTS) is a v2 thing
+  // once edge gains a streaming-Synthesize path.
+  rpc Chat (ChatRequest) returns (ChatResponse);
+}
+
+message SynthesizeRequest {
+  // Text to speak. UTF-8. v1: rendered by the edge from a template
+  // (BOT_NAME / GREETING_TEMPLATE env). v1.5: per-scenario via PIPELINES.md.
+  string text = 1;
+  // Voice ID — opaque string, plugin-defined. Piper voices look like
+  // "en_US-amy-medium"; ElevenLabs is a UUID; Cartesia is a name.
+  string voice = 2;
+  // BCP-47 language tag ("en", "ru", "en-US"). Hint for the TTS plugin —
+  // some need it, some auto-detect.
+  string language = 3;
+  // Target codec for the returned audio. Edge picks based on the call's
+  // negotiated codec so it can drop the bytes straight into RTP without
+  // a re-encode hop. PCMU = G.711 μ-law, PCMA = G.711 A-law.
+  Codec codec = 4;
+}
+
+enum Codec {
+  CODEC_UNSPECIFIED = 0;
+  CODEC_PCMU        = 1;  // G.711 μ-law, 8 kHz, 8-bit, RTP PT 0
+  CODEC_PCMA        = 2;  // G.711 A-law, 8 kHz, 8-bit, RTP PT 8
+}
+
+message SynthesizeResponse {
+  // Encoded audio bytes ready for the edge to push frame-by-frame
+  // into the RTP stream (160-byte frames @ 20 ms ptime). Length is
+  // always a multiple of 160 — ai-worker pads silence at the end if
+  // the synthesis didn't land on a frame boundary.
+  bytes  audio       = 1;
+  // Duration of the synthesized speech in milliseconds. Useful for
+  // edge-side scheduling (when does the bot finish speaking?).
+  uint32 duration_ms = 2;
+  // Cache key the edge MAY use to skip a future Synthesize for the
+  // same (text, voice, language, codec) tuple. Empty = don't cache.
+  string cache_key   = 3;
+}
+
+message AudioFrame {
+  // Raw 16-bit signed linear PCM @ 8 kHz mono. Edge decodes the
+  // caller's G.711 once and ships PCM so the ai-worker side doesn't
+  // need a G.711 codec at all. 160 samples per 20 ms frame =
+  // 320 bytes per AudioFrame typical.
+  bytes pcm_s16le = 1;
+  // is_endpoint=true on the LAST frame of the utterance (after the
+  // edge's VAD detected end-of-speech). Tells the STT plugin to
+  // finalize and emit the final transcript.
+  bool  is_endpoint = 2;
+}
+
+message TranscribeResponse {
+  // Recognized text. Partial hypotheses are emitted with is_final=false
+  // so v1.5 can wire barge-in / spec exec; v1 only acts on the final.
+  string text             = 1;
+  bool   is_final         = 2;
+  // BCP-47 language detected (or the requested one).
+  string language         = 3;
+  // Average word-level confidence over the segment. 0..1; some
+  // plugins don't compute this and leave it 0.
+  float  confidence       = 4;
+}
+
+// CallDTMF is pushed when the per-call runner detects a digit
+// keypress in the inbound RTP stream. RFC 2833 telephone-event
+// (typically PT 101 — negotiated dynamically in SDP). Emitted
+// once per digit-press at the END marker boundary so duration_ms
+// reflects the full hold time of the key. Used by scenario flows
+// that branch on caller input ("press 1 for X").
+message CallDTMF {
+  string digit       = 1;  // "0"-"9", "*", "#", "A"-"D"
+  uint32 duration_ms = 2;
+  // Volume in -dBm0 (RFC 2833 §3.5: 0..63 means 0 dBm0 to -63 dBm0).
+  // Most trunks emit 0-15. Operator informational.
+  uint32 volume      = 3;
+}
+
+// CallTranscript is pushed onto the existing CallEvents stream when
+// an ai-worker-flow call finishes STT. Operators see it via
+// `sipmeshctl calls tap` next to the existing started/answered/ended
+// events. recording_path correlates with the WAV the edge wrote so
+// the operator can re-listen.
+message CallTranscript {
+  string text              = 1;
+  string language          = 2;
+  float  confidence        = 3;
+  string recording_path    = 4;  // file:// URI, same as CallRecordingDone.uri
+}
+
+// ChatMessage is one entry in the conversation history fed to the LLM.
+// Mirrors the openai/ollama chat message shape so the LLM plugin
+// (OllamaLLM in v1) maps it 1:1 onto the upstream API.
+message ChatMessage {
+  enum Role {
+    ROLE_UNSPECIFIED = 0;
+    SYSTEM           = 1;  // sets the bot persona; usually first
+    USER             = 2;  // the caller (transcribed STT output)
+    ASSISTANT        = 3;  // the bot's prior responses
+  }
+  Role   role = 1;
+  string text = 2;
+}
+
+message ChatRequest {
+  // Full conversation history, oldest first. The edge owns history
+  // state per call — it appends each STT result as USER and each
+  // ChatResponse.text back as ASSISTANT, then re-sends the whole
+  // thing. v1 keeps Chat itself stateless so any ai-worker replica
+  // handles any turn.
+  repeated ChatMessage messages = 1;
+  // Override the worker's default model for this single call. Empty
+  // = use whatever the worker booted with (LLM_MODEL env). Useful
+  // for per-pipeline model selection once PIPELINES.md lands.
+  string model_override = 2;
+  // BCP-47 language hint. v1 plugin (OllamaLLM) ignores this — qwen
+  // is multilingual and infers from the prior turns. Reserved so a
+  // future plugin (Claude, GPT) that wants explicit language can
+  // get it without a proto bump.
+  string language = 3;
+  // Cap on tokens the model is allowed to generate. Maps to
+  // Ollama's options.num_predict, OpenAI's max_tokens, etc.
+  // 0 = let the worker / upstream pick its default. Set per-flow
+  // (ConverseStep.max_completion_tokens in flows.yaml) when the
+  // pipeline needs a hard ceiling — e.g. smoke flows want short
+  // turns so TTS finishes inside the gRPC deadline.
+  uint32 max_completion_tokens = 4;
+}
+
+message ChatResponse {
+  // The bot's reply. UTF-8, plain text — no markdown, no special
+  // tokens. The edge feeds this straight into Synthesize, so any
+  // markdown asterisks or thinking-tags would land in the audio as
+  // literal noise. The plugin is responsible for stripping
+  // model-specific cruft (e.g. qwen3 <think>...</think> blocks)
+  // before returning.
+  string text = 1;
+  // The model that actually answered. Echoes model_override or the
+  // worker default; lets the edge log/metric per-model latency.
+  string model = 2;
+  // End-to-end LLM RPC latency, measured by ai-worker (not edge).
+  // Includes upstream HTTP round-trip + server-side queueing on
+  // ollama. Edge layers this into per-turn-latency telemetry.
+  uint32 latency_ms = 3;
+  // Token counts the upstream reported. 0 if the upstream didn't
+  // populate them (some backends don't). Operator informational.
+  uint32 prompt_tokens     = 4;
+  uint32 completion_tokens = 5;
+}
+
+// -------------------------------------------------------------------------
+// Config — central configuration distribution (PIPELINES.md). Operators
+// push a ConfigSet (trunks + upstreams + routes + pipelines + scenarios,
+// shape-stable across versions) to the media-server; subscribed pods
+// (sip-proxy, media-edge, ai-worker) get push notifications and swap
+// their in-memory state atomically. Replaces per-pod env / YAML files
+// for everything except boot bootstrap creds (WORKER_ID, MEDIA_SERVER).
+//
+// Body is opaque YAML/JSON bytes — the schema is documented in
+// docs/PIPELINES.md and parsed pod-side, so adding new fields doesn't
+// require a proto bump on the wire path. Validation runs server-side
+// at ApplyConfigSet (L1 schema check + referential integrity).
+//
+// v1 of this service ships ApplyConfigSet + GetConfigSet (request/
+// response). Subscribe (server-stream push on every Apply) lands in a
+// follow-up commit alongside the pod-side configclient.
+// -------------------------------------------------------------------------
+service Config {
+  // ApplyConfigSet validates + persists a new ConfigSet for the
+  // group. Returns the assigned version number (monotonic per group).
+  // Reject reasons land in errors.go (gRPC InvalidArgument with
+  // human-readable details).
+  rpc ApplyConfigSet (ApplyConfigSetRequest) returns (ApplyConfigSetResponse);
+
+  // GetConfigSet returns the current ConfigSet for the group, or
+  // a specific historical version when version > 0. Used by
+  // sipmeshctl configset show + by pods on cold-start before
+  // Subscribe lands them anything.
+  rpc GetConfigSet (GetConfigSetRequest) returns (ConfigSet);
+
+  // ListVersions returns the version history for a group (newest
+  // first). Body is OMITTED on each entry (lookup-by-version via
+  // GetConfigSet for the actual content). Useful for
+  // sipmeshctl configset list / status views.
+  rpc ListVersions (ListVersionsRequest) returns (ListVersionsResponse);
+
+  // RollbackConfigSet is a sugar for "Apply with body = body of
+  // version N" + an audit-log breadcrumb. Bumps the version
+  // counter just like a normal Apply.
+  rpc RollbackConfigSet (RollbackConfigSetRequest) returns (ApplyConfigSetResponse);
+
+  // Subscribe is the push channel: subscribers register interest in a
+  // group, get the current ConfigSet immediately, then a fresh one
+  // every time ApplyConfigSet bumps the version. Atomic: subscribers
+  // never see a half-applied config.
+  rpc Subscribe (SubscribeConfigRequest) returns (stream ConfigSet);
+}
+
+message ConfigSet {
+  // Group is the logical fleet of pods that share this config.
+  // Typical: "edge-us-west" or "tenant-acme-prod". Pods boot with
+  // their group via env (CONFIG_GROUP).
+  string group        = 1;
+  // Version is server-assigned, monotonic per group. Starts at 1 on
+  // first Apply.
+  uint64 version      = 2;
+  // Body is the YAML the operator wrote (or rendered from). Pod-side
+  // parsing tolerates the schema growing as long as new fields are
+  // optional. UTF-8 bytes; size capped server-side at ~256 KiB.
+  bytes  body         = 3;
+  // ETag is a content hash so subscribers can no-op when the same
+  // ConfigSet replays after a transport reconnect. SHA-256 hex.
+  string etag         = 4;
+  // CreatedAt is when this version was committed. UTC.
+  google.protobuf.Timestamp created_at = 5;
+  // CreatedBy is whatever the operator's CLI sent in
+  // ApplyConfigSetRequest.author. Free-form (email / k8s service-
+  // account / "ci"). Empty allowed but shows up as "<unknown>" in
+  // audit views.
+  string created_by   = 6;
+}
+
+message ApplyConfigSetRequest {
+  string group   = 1;
+  bytes  body    = 2;
+  // Author tag, audited on the ConfigSet. Operator's email / SA.
+  string author  = 3;
+  // ParentVersion, when non-zero, makes the apply optimistic-
+  // concurrency-style: reject if the current version != parent.
+  // Catches "two operators applying simultaneously" without
+  // either realizing.
+  uint64 parent_version = 4;
+}
+
+message ApplyConfigSetResponse {
+  uint64 version = 1;
+  string etag    = 2;
+}
+
+message GetConfigSetRequest {
+  string group   = 1;
+  // Version=0 returns the current. >0 returns that historical
+  // version (kept until ConfigSetRetention bytes / count).
+  uint64 version = 2;
+}
+
+message ListVersionsRequest {
+  string group = 1;
+  // Limit caps the response size. 0 = server default (50).
+  uint32 limit = 2;
+}
+
+message ListVersionsResponse {
+  // Newest first. Each entry has body OMITTED — fetch via
+  // GetConfigSet for full content.
+  repeated ConfigSetMeta versions = 1;
+}
+
+message ConfigSetMeta {
+  string                    group      = 1;
+  uint64                    version    = 2;
+  string                    etag       = 3;
+  google.protobuf.Timestamp created_at = 4;
+  string                    created_by = 5;
+  uint64                    body_bytes = 6;
+}
+
+message RollbackConfigSetRequest {
+  string group        = 1;
+  uint64 to_version   = 2;  // version whose body becomes the new HEAD
+  string author       = 3;
+}
+
+message SubscribeConfigRequest {
+  string group   = 1;
+  // ResumeFromVersion lets the pod skip a redundant initial push
+  // when it already holds version >=N. Server still ships exactly
+  // one ConfigSet on subscribe (the current); after that, only
+  // strictly-newer versions are pushed.
+  uint64 resume_from_version = 2;
+}
+
+message GetClientEndpointsRequest {}
+
+// ClientEndpoints carries everything a browser/native softphone
+// needs to reach this sipmesh deployment from outside. Sourced
+// from sip-proxy env vars (SIP_WSS_PUBLIC_URL etc.) so changing
+// the public-facing URL is an operator-side chart values flip
+// with no proxy rebuild.
+//
+// Additive only — never repurpose a field, never tighten
+// validation. Empty/unset fields mean "not exposed by this
+// deployment" and consumers degrade gracefully.
+message GetClientEndpointsResponse {
+  // SipWssUrl is the full WebSocket URL for SIP-over-WSS
+  // (RFC 7118). Browsers dial this for REGISTER + INVITE.
+  // Format: "wss://<fqdn>[:<port>]/" — must include scheme.
+  // Empty = WSS not exposed; browser softphone unavailable.
+  // Sourced from `SIP_WSS_PUBLIC_URL` env on sip-proxy.
+  string sip_wss_url = 1;
+
+  // SipWssSubprotocol is the WebSocket subprotocol the browser
+  // UA must request in the Sec-WebSocket-Protocol header.
+  // Always "sip" per RFC 7118 §5.1 today; field exists so we
+  // can negotiate alternatives without a proto bump if the
+  // need arises. Empty = consumer assumes "sip".
+  string sip_wss_subprotocol = 2;
+}

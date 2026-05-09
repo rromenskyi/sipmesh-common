@@ -1,0 +1,752 @@
+syntax = "proto3";
+
+// OperatorAPI is the public sipmesh control surface — the contract
+// frontend consoles, operator dashboards, and programmatic clients
+// (sipmesh-frontend's PlaceCall, future bots, CI tooling) consume.
+//
+// Internal services (Admin, Config, ProxyControl, SipTrace, Edge,
+// Pipeline, Registry, Scheduler) remain registered on their existing
+// pods but are implementation details that may evolve / re-shard /
+// rename without notice. Public consumers MUST go through OperatorAPI.
+//
+// Hosting: registered on media-server's existing admin gRPC listener
+// (chart default :50070). One pod, one Service, one Ingress in front
+// (Traefik + cert-manager + oauth2-proxy in production).
+//
+// Auth: same Bearer SIPMESH_API_KEY interceptor used everywhere else.
+//
+// Atomic deploy: ApplyOperatorConfig is the bulk-write entry point.
+// Frontend builds a complete OperatorConfig (trunks + routes +
+// pipelines), pushes it as one transaction. Server validates the
+// whole graph — every route's `trunk` cross-references must resolve;
+// every flow named in a route's `pipeline` must exist; codec lists
+// validated against the binary's compiled-in registry; etc — BEFORE
+// writing anything. Either everything lands or nothing does.
+// Optimistic concurrency via parent_version protects against the
+// "two operators editing the same UI at once" lost-update race.
+
+// Separate proto package from `sipmesh.v1` — internal services
+// (Admin, Config, ProxyControl, etc) evolve at sipmesh.v1; this
+// public surface evolves at sipmesh.api.v1 independently. Nothing
+// here references internal-package messages — the public contract
+// owns its own message types.
+package sipmesh.api.v1;
+
+option go_package = "github.com/rromenskyi/sipmesh-common/gen/go/sipmesh/api/v1;sipmeshapiv1";
+
+// Imports kept self-contained for now — every operator-shaped message
+// is defined here. If we ever need to reference internal service
+// messages (e.g. WorkerSummary from Admin), do that via a thin
+// projection here, NOT a transitive proto import — keeps the public
+// surface independent of internal proto churn.
+
+// ============================================================
+// Atomic config — the centrepiece for the frontend constructor
+// ============================================================
+
+// OperatorConfig is the complete operator-supplied configuration
+// graph. Every resource that's currently spread across trunks.yaml,
+// flows.yaml, and the in-cluster ConfigSet store is captured here
+// as one strongly-typed object. Frontend's "constructor" UI holds
+// an in-memory OperatorConfig, edits it field-by-field, and pushes
+// it whole via ApplyOperatorConfig.
+message OperatorConfig {
+  // Carrier and inbound trunks. Order is irrelevant — trunks are
+  // looked up by Trunk.id elsewhere in the graph.
+  repeated Trunk trunks = 1;
+  // Inbound routing — every incoming INVITE on a trunk gets routed
+  // to one of these matchers (first match wins; routes are scanned
+  // in order, so put more-specific matches first).
+  repeated Route routes = 2;
+  // Call flows / pipelines (say + listen + converse + dial + bridge
+  // + hangup composition). Referenced from Route.pipeline by name.
+  repeated Pipeline pipelines = 3;
+  // ConfigSet bookkeeping — populated by the server on read,
+  // ignored on write (server stamps a fresh version every Apply).
+  // Frontend echoes back what it last read into ApplyRequest's
+  // parent_version for optimistic concurrency.
+  uint64 version    = 100;
+  string applied_by = 101;
+  // Server-generated apply timestamp (RFC 3339 string for now —
+  // proto well-known Timestamp would need an import we're
+  // postponing while the rest of the proto stays self-contained).
+  string applied_at_iso = 102;
+}
+
+message GetOperatorConfigRequest {}
+
+message OperatorConfigResponse {
+  OperatorConfig config = 1;
+}
+
+message ApplyOperatorConfigRequest {
+  OperatorConfig config = 1;
+  // Optimistic-concurrency token. Pass the version observed in the
+  // last GetOperatorConfigResponse. Server rejects with
+  // FAILED_PRECONDITION if the in-cluster version has moved on
+  // (someone else wrote between your read and your write). Pass 0
+  // to force-apply ignoring concurrency — useful for first-time
+  // bootstrap or operator-supervised override.
+  uint64 parent_version = 2;
+  // Free-form audit string ("alice via console", "ci-cd nightly",
+  // etc) recorded on the resulting OperatorConfig.applied_by.
+  string applied_by = 3;
+  // dry_run: validate everything but don't write. Returns the same
+  // diagnostics ApplyOperatorConfig would have surfaced. Frontend
+  // can light up red squiggles in the constructor without a real
+  // deploy.
+  bool dry_run = 4;
+}
+
+message ApplyOperatorConfigResponse {
+  // The version of the new config (or the existing one when
+  // dry_run=true). Frontend stashes this for the next apply's
+  // parent_version.
+  uint64 version = 1;
+  // Validation diagnostics. Populated regardless of success — a
+  // successful apply still returns warnings (deprecated fields,
+  // unused trunks, codec-list narrowing the carrier rejects, etc).
+  // dry_run: same shape, with .applied=false.
+  repeated ConfigDiagnostic diagnostics = 2;
+  bool applied = 3;
+}
+
+// ConfigDiagnostic — a single validation finding. Frontend renders
+// these inline in the constructor UI to flag specific fields.
+message ConfigDiagnostic {
+  enum Severity {
+    SEVERITY_UNSPECIFIED = 0;
+    SEVERITY_INFO        = 1;
+    SEVERITY_WARNING     = 2;
+    SEVERITY_ERROR       = 3;
+  }
+  Severity severity = 1;
+  // Human-readable message ("trunk \"phones\" route references
+  // unknown pipeline \"customer-survey\"").
+  string message = 2;
+  // YAML-shaped JSON pointer ("/trunks/phones/codec_allowed/2") so
+  // the frontend can highlight the exact offending field. Empty
+  // when the diagnostic is global (e.g. "max_concurrent across all
+  // trunks exceeds cluster capacity").
+  string field_path = 3;
+}
+
+// ============================================================
+// Trunk — carrier or softphone-facing SIP trunk record
+// ============================================================
+
+message Trunk {
+  // Operator-chosen identifier (used by Route.trunk references and
+  // by sipmeshctl `--trunk <id>`). Required, must be unique within
+  // OperatorConfig.trunks.
+  string id = 1;
+
+  // Topology selector — see internal/trunkmgr KindRegisterOutbound
+  // (default: classic SIP client, REGISTER + UAC), KindPeer (static
+  // IP, no REGISTER), KindRegisterInbound (registrar surface for
+  // softphones).
+  enum Kind {
+    KIND_UNSPECIFIED       = 0;
+    KIND_REGISTER_OUTBOUND = 1;
+    KIND_PEER              = 2;
+    KIND_REGISTER_INBOUND  = 3;
+  }
+  Kind kind = 2;
+
+  // bidirectional / inbound-only / outbound-only. Only meaningful
+  // for KIND_PEER (REGISTER kinds are always bidi by definition).
+  enum Direction {
+    DIRECTION_UNSPECIFIED = 0;
+    DIRECTION_BOTH        = 1;
+    DIRECTION_IN          = 2;
+    DIRECTION_OUT         = 3;
+  }
+  Direction direction = 3;
+
+  // ----- REGISTER_OUTBOUND fields -----
+  string host      = 10;
+  uint32 port      = 11;
+  string user      = 12;
+  // pass: write-only on the wire — server scrubs to empty on every
+  // GetOperatorConfig response so the frontend doesn't accidentally
+  // re-roundtrip cleartext. Frontend re-supplies only when the
+  // operator is explicitly editing the credential.
+  string pass      = 13;
+  string transport = 14;  // "udp" / "tcp" / "tls"
+  // Expires lifetime as Go duration string ("3600s", "1h"). Empty
+  // = chart/binary default (1h).
+  string expires = 15;
+  // Override the proxy's SIP_CONTACT_HOST/PORT for this trunk.
+  // Empty = use proxy env. Special value "auto" = UPnP-IGD probe
+  // (see internal/proxymgr UPnP code).
+  string contact_host = 16;
+  uint32 contact_port = 17;
+
+  // ----- KIND_PEER fields -----
+  repeated TrunkTarget targets = 30;
+  TrunkAuth            auth    = 31;
+
+  // ----- KIND_REGISTER_INBOUND fields -----
+  string realm = 40;
+  // Expiry-bracket clamp for incoming REGISTERs.
+  string expires_min = 41;
+  string expires_max = 42;
+  InboundAuth inbound_auth = 43;
+  // For operator-group fan-out (single AOR fans to N registered
+  // user instances).
+  repeated string operator_group = 44;
+  // Outbound routes scoped to this register_inbound (extension dial
+  // pattern → upstream trunk).
+  repeated InboundOutboundRoute outbound_routes = 45;
+
+  // ----- Common fields -----
+  // Codec preference order. Empty = use the caller's offer order.
+  repeated string codec_preference = 50;
+  // Codec whitelist set. Empty = no filter.
+  repeated string codec_allowed = 51;
+  // Per-IP-endpoint outbound rate limiting. 0 = unlimited.
+  double cps_limit       = 52;
+  uint32 max_concurrent  = 53;
+  // Source-IP allowlist for inbound matching when the carrier's
+  // SBC sits on a different IP than the REGISTER target.
+  repeated string allowed_ips = 54;
+  // IPv6 vs IPv4 outbound preference.
+  repeated string outbound_family_preference = 55;
+
+  // Default From URI for outbound originates dispatched via this
+  // trunk. Per-route caller_id wins; per-extension caller_id (on
+  // InboundAuthUser) wins over this; this wins over the carrier's
+  // own default. Maps to internal/trunkmgr Trunk.OutboundCallerID.
+  CallerID outbound_caller_id = 56;
+
+  // Trunk-level dialed-number rewrite applied on outbound originate.
+  // Per-route rewrite_dialed (on InboundOutboundRoute / ExtensionRoute
+  // / ForwardRoute) is applied first; this stacks AFTER it. Maps to
+  // internal/trunkmgr Trunk.OutboundDialedRewrite.
+  DialedRewrite outbound_dialed_rewrite = 57;
+}
+
+message TrunkTarget {
+  string host      = 1;
+  uint32 port      = 2;
+  string transport = 3;
+}
+
+message TrunkAuth {
+  string user = 1;
+  string pass = 2;  // write-only on wire (same scrub-on-read as Trunk.pass)
+}
+
+message InboundAuth {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_YAML        = 1;  // operator-supplied user list
+    // KIND_LDAP, KIND_OIDC, etc — future plugins
+  }
+  Kind kind = 1;
+  repeated InboundAuthUser users = 2;  // for KIND_YAML
+}
+
+message InboundAuthUser {
+  string user     = 1;
+  string password = 2;  // write-only on wire
+  // Optional From-header default for outbound originates this user
+  // dials. Override chain: per-route caller_id (on InboundOutboundRoute
+  // / Route's delivery target) > THIS > Trunk.outbound_caller_id >
+  // carrier default. NOTE: legacy proto had this as `string caller_id`
+  // (display-only). Bumped to typed CallerID at field 4 to match the
+  // internal CallerIDSpec; field 3 left vacant as deprecated tombstone.
+  CallerID caller_id = 4;
+  reserved 3;
+  reserved "caller_id_legacy";
+}
+
+message InboundOutboundRoute {
+  RouteMatch match = 1;
+  string     trunk = 2;
+  // Per-route From-header override for outbound originate. Wins over
+  // InboundAuthUser.caller_id and Trunk.outbound_caller_id.
+  CallerID caller_id = 3;
+  // Per-route dialed-number rewrite. Applied BEFORE Trunk-level
+  // outbound_dialed_rewrite; the trunk rewrite stacks on top of
+  // this output.
+  DialedRewrite rewrite_dialed = 4;
+}
+
+// DialedRewrite is a regex-based dialed-number rewrite applied at
+// outbound dispatch. match is an RE2 pattern, replace is the substitute
+// passed to Go's regexp.ReplaceAllString. Per-route + per-trunk rewrites
+// stack: per-route runs first, trunk-level runs on the output.
+message DialedRewrite {
+  string match   = 1;  // RE2 pattern
+  string replace = 2;  // substitute (supports $1, $2 capture refs)
+}
+
+// ============================================================
+// Route — top-level inbound dispatcher
+// ============================================================
+
+message Route {
+  RouteMatch match = 1;
+  // Exactly ONE of the following 5 must be set. Validated server-
+  // side; mutually exclusive in the UI.
+  string flow                  = 10;  // edge-side flow name
+  string pipeline              = 11;  // pipeline (flow) name from OperatorConfig.pipelines
+  ExtensionRoute extension     = 12;
+  PeerRoute      peer          = 13;
+  ForwardRoute   forward       = 14;
+  TransitRoute   transit       = 15;
+}
+
+message RouteMatch {
+  // Filter by trunk ID — empty string = match all trunks.
+  string trunk = 1;
+  // Dialed-number patterns. Exactly one of equals / regex / prefix
+  // populated; empty match block = catch-all.
+  StringMatch dialed = 2;
+  // RE2 pattern matched against the FULL caller URI (e.g.
+  // "^sip:vip@" to gate VIP routing). Empty = no caller-side filter.
+  string caller_regex = 3;
+  // Trunk allowlist for sharing one route across multiple trunks
+  // without copy-paste. ANDed with `trunk:` (which is normally empty
+  // when this is non-empty). Empty = no trunk allowlist filter.
+  repeated string allowed_trunks = 4;
+}
+
+message StringMatch {
+  string equals = 1;
+  string regex  = 2;
+  string prefix = 3;
+}
+
+message ExtensionRoute {
+  string target_trunk = 1;  // register_inbound trunk hosting the user
+  string user         = 2;  // exact inbound_auth user; rings every
+                            // active binding (RFC 5626 multi-device
+                            // fanout, #227 fork-race fix).
+                            //
+                            // Operator-pickup fanout (ring everyone
+                            // in a trunk's operator_group) goes
+                            // through `Pipeline + DialStep` with
+                            // `operator_group_trunk`, NOT through
+                            // this route shape — see docs/IDEAS.md
+                            // for the rationale and "per-route
+                            // operator_group flag" idea kept around
+                            // as a possible future shortcut.
+
+  // Field numbers 3..7 reserved for the "per-route extension
+  // shortcuts" idea — see docs/IDEAS.md. Today these are not wired
+  // through Go (router.ExtensionRouteSpec only has TargetTrunk +
+  // User), so the proto would lie about capability if we shipped
+  // them. Reserved here so we don't reassign by accident if the
+  // shortcuts ever land.
+  reserved 3, 4, 5, 6, 7;
+  reserved "operator_group", "user_from_dialed", "caller_id",
+           "codec_hints", "rewrite_dialed";
+}
+
+message PeerRoute {
+  string uri          = 1;
+  CallerID caller_id  = 2;
+  repeated string codec_hints = 3;
+}
+
+message ForwardRoute {
+  string trunk    = 1;
+  string callee   = 2;
+  CallerID caller_id = 3;
+  // Codec preference hints applied to the outbound leg. Empty = use
+  // trunk default.
+  repeated string codec_hints = 4;
+  // Field 5 reserved — per-route rewrite_dialed isn't wired in Go
+  // for forward routes today (Trunk.outbound_dialed_rewrite covers
+  // the per-trunk case). See docs/IDEAS.md.
+  reserved 5;
+  reserved "rewrite_dialed";
+}
+
+message TransitRoute {
+  string target_trunk = 1;
+}
+
+message CallerID {
+  string display_name = 1;
+  string user         = 2;
+  string host         = 3;
+}
+
+// ============================================================
+// Pipeline — call flow definition (steps composition)
+// ============================================================
+
+message Pipeline {
+  string name = 1;
+  // Wall-clock cap, Go duration string. Empty = inherit
+  // edge global MAX_CALL_DURATION.
+  string max_call_duration = 2;
+  // Per-step list. Discriminated union — exactly one of the inner
+  // step fields populated per entry.
+  repeated PipelineStep steps = 3;
+}
+
+message PipelineStep {
+  // Each PipelineStep entry sets exactly ONE of the inner messages.
+  // Validated server-side; UI renders one node per entry.
+  SayStep      say      = 1;
+  ListenStep   listen   = 2;
+  ConverseStep converse = 3;
+  DialStep     dial     = 4;
+  BridgeStep   bridge   = 5;
+  HangupStep   hangup   = 6;
+  BranchStep   branch   = 7;
+  DTMFStep     dtmf     = 8;
+  SetCustomFieldStep set_custom_field = 9;
+  // Add new step kinds here as they land in the engine.
+}
+
+message SayStep {
+  // Per-language text and voice maps; default_language picks the
+  // entry when the call's detected language has no override.
+  map<string, string> text_by_language  = 1;
+  map<string, string> voice_by_language = 2;
+  string default_language               = 3;
+}
+
+message ListenStep {
+  uint32 endpoint_silence_ms = 1;
+  uint32 max_audio_ms        = 2;
+  // Optional VAD knobs surfaced to the engine in
+  // internal/edgemgr/runner_primitives.go.
+}
+
+message ConverseStep {
+  map<string, string> system_by_language               = 1;
+  map<string, string> voice_by_language                = 2;
+  map<string, string> fallback_text_by_language        = 3;
+  map<string, string> ack_intro_text_by_language       = 4;
+  map<string, string> slow_ack_text_by_language        = 5;
+  uint32              slow_ack_after_ms                = 6;
+  uint32              slow_ack_repeat_ms               = 7;
+  map<string, string> reprompt_text_by_language        = 8;
+  map<string, string> on_max_turns_text_by_language    = 9;
+  map<string, string> unsupported_lang_text_by_language= 10;
+  string              default_language                 = 11;
+  uint32              max_turns                        = 12;
+  uint32              max_fallbacks                    = 13;
+  uint32              max_completion_tokens            = 14;
+  uint32              endpoint_silence_ms              = 15;
+  string              escape_digit                     = 16;
+  bool                interrupt_on_dial_answer         = 17;
+}
+
+message DialStep {
+  // Discriminated union: exactly ONE of the targeting fields set.
+  string operator_group_trunk = 1;
+  string trunk                = 2;
+  string callee               = 3;
+  WaitingPolicy waiting       = 10;
+  bool background             = 11;
+}
+
+message WaitingPolicy {
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_RINGBACK    = 1;
+    MODE_MUSIC       = 2;
+    MODE_SILENCE     = 3;
+  }
+  Mode mode = 1;
+  string ringback_region = 2;  // "us", "eu", etc — picks a region-flavored ringback
+  string moh_clip        = 3;  // when MODE_MUSIC
+}
+
+message BridgeStep {}  // no fields today; placeholder for future tunables
+
+message HangupStep {
+  string reason = 1;
+}
+
+message BranchStep {
+  repeated BranchCase cases   = 1;
+  repeated PipelineStep default_steps = 2;
+}
+
+message BranchCase {
+  // Single-key when expression. "last_dial_status: 200" etc.
+  // Frontend renders as a dropdown over known fields + value editor.
+  map<string, string> when      = 1;
+  repeated PipelineStep   steps = 2;
+}
+
+message DTMFStep {
+  uint32 timeout_ms = 1;
+  uint32 max_digits = 2;
+  string terminator = 3;
+}
+
+message SetCustomFieldStep {
+  string key   = 1;
+  // Value supports the engine's variable-substitution
+  // ("${last_dtmf}", "${transcript}", etc).
+  string value = 2;
+}
+
+// ============================================================
+// Read-only resource browse
+// ============================================================
+
+message ListTrunksRequest {}
+message ListTrunksResponse  { repeated Trunk trunks = 1; }
+message GetTrunkRequest     { string id = 1; }
+
+message ListPipelinesRequest {}
+message ListPipelinesResponse { repeated Pipeline pipelines = 1; }
+message GetPipelineRequest   { string name = 1; }
+
+message ListRoutesRequest {}
+message ListRoutesResponse { repeated Route routes = 1; }
+
+// ============================================================
+// Calls runtime
+// ============================================================
+
+message OriginateCallRequestV2 {
+  string callee = 1;
+  string trunk  = 2;
+  // Pipeline name (from OperatorConfig.pipelines) to run on the
+  // outbound leg once the carrier picks up.
+  string pipeline = 3;
+  repeated string codec_hints = 4;
+  // Per-call invite_timeout (Go duration string). Empty = proxy default.
+  string invite_timeout = 5;
+  // Optional caller-ID override.
+  CallerID caller_id = 6;
+}
+
+message OriginateCallResponseV2 {
+  string internal_call_id = 1;
+  uint32 sip_status       = 2;
+  string codec            = 3;
+}
+
+message ListCallsRequest {
+  // Filters applied with AND. All optional.
+  string worker     = 1;
+  string trunk      = 2;
+  string flow       = 3;
+  uint32 limit      = 4;
+}
+
+message ListCallsResponse {
+  repeated CallSummary calls = 1;
+}
+
+message CallSummary {
+  string internal_call_id  = 1;
+  string worker            = 2;
+  string caller            = 3;
+  string callee            = 4;
+  string trunk             = 5;
+  string codec             = 6;
+  uint32 port              = 7;
+  string state             = 8;  // "ringing" / "answered" / "released"
+  string flow              = 9;
+  string pipeline          = 10;
+  string started_at_iso    = 11;
+}
+
+message GetCallRequest { string internal_call_id = 1; }
+message CallDetail     { CallSummary summary = 1; /* TODO: timeline events, RTP stats */ }
+
+message HangupCallRequest {
+  string internal_call_id = 1;
+  string reason           = 2;
+}
+message HangupCallResponse {
+  bool   found        = 1;
+  string prior_worker = 2;
+}
+
+// ============================================================
+// Workers
+// ============================================================
+
+message ListWorkersRequest {}
+message ListWorkersResponse { repeated WorkerSummaryV2 workers = 1; }
+
+message WorkerSummaryV2 {
+  string id              = 1;
+  string grpc_addr       = 2;
+  string rtp_public_ip   = 3;
+  string rtp_public_ip_v6= 4;
+  uint32 rtp_port_min    = 5;
+  uint32 rtp_port_max    = 6;
+  uint32 max_concurrent  = 7;
+  uint32 active_calls    = 8;
+  string version         = 9;
+  bool   interop_capable = 10;
+  string last_heartbeat_iso = 11;
+}
+
+message GetWorkerRequest { string id = 1; }
+message WorkerDetail     { WorkerSummaryV2 summary = 1; /* TODO: per-worker active call list */ }
+
+message DrainWorkerRequest  { string id = 1; bool confirm = 2; }
+message DrainWorkerResponse { bool ok = 1; }
+
+// ============================================================
+// Events + sip-trace streams
+// ============================================================
+
+message SubscribeEventsRequest {
+  // Empty = subscribe to all topics. Currently meaningful values:
+  // "calls", "config", "trunks", "workers". Future: filter by ID.
+  repeated string topics = 1;
+}
+
+message Event {
+  string topic       = 1;  // "calls" / "config" / "trunks" / "workers"
+  string action      = 2;  // "started" / "answered" / "ended" / "applied" / etc
+  string subject_id  = 3;  // call_id / trunk_id / config_version / etc
+  string detail_json = 4;  // event-specific payload as JSON for forward compat
+}
+
+message StreamSipTraceRequest {
+  string call_id_filter = 1;  // empty = all calls
+  string for_duration   = 2;  // Go duration string; empty = until cancel
+}
+
+message SipTraceEvent {
+  string call_id    = 1;
+  string direction  = 2;  // "inbound" / "outbound"
+  string method     = 3;  // "INVITE" / "200" / etc
+  string raw        = 4;  // full SIP message bytes (UTF-8 lossy display ok for ops)
+  string at_iso     = 5;
+}
+
+// ============================================================
+// OperatorAPI service — the only public RPC surface
+// ============================================================
+
+service OperatorAPI {
+  // ----- Atomic config (the constructor's main hook) -----
+  rpc GetOperatorConfig(GetOperatorConfigRequest) returns (OperatorConfigResponse);
+  rpc ApplyOperatorConfig(ApplyOperatorConfigRequest) returns (ApplyOperatorConfigResponse);
+
+  // ----- Per-resource read views -----
+  rpc ListTrunks(ListTrunksRequest)       returns (ListTrunksResponse);
+  rpc GetTrunk(GetTrunkRequest)           returns (Trunk);
+  rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse);
+  rpc GetPipeline(GetPipelineRequest)     returns (Pipeline);
+  rpc ListRoutes(ListRoutesRequest)       returns (ListRoutesResponse);
+
+  // ----- Calls runtime -----
+  rpc OriginateCall(OriginateCallRequestV2) returns (OriginateCallResponseV2);
+  rpc ListCalls(ListCallsRequest)           returns (ListCallsResponse);
+  rpc GetCall(GetCallRequest)               returns (CallDetail);
+  rpc HangupCall(HangupCallRequest)         returns (HangupCallResponse);
+
+  // ----- Workers -----
+  rpc ListWorkers(ListWorkersRequest) returns (ListWorkersResponse);
+  rpc GetWorker(GetWorkerRequest)     returns (WorkerDetail);
+  rpc DrainWorker(DrainWorkerRequest) returns (DrainWorkerResponse);
+
+  // ----- Streams (server-streaming) -----
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream Event);
+  rpc StreamSipTrace(StreamSipTraceRequest)   returns (stream SipTraceEvent);
+
+  // ----- Per-call S3 archive (debug console) -----
+  // Per-call artifacts (CDR row, audio recording, SIP wire trace)
+  // are written to S3 under deterministic per-call_id prefixes by
+  // sipmesh edge + proxy. These RPCs let the frontend browse and
+  // fetch them without exposing S3 credentials to the browser.
+  rpc ListCallArchive(ListCallArchiveRequest) returns (ListCallArchiveResponse);
+  rpc GetCallArtifactURL(GetCallArtifactURLRequest) returns (GetCallArtifactURLResponse);
+}
+
+// ListCallArchive returns the calls whose artifacts landed in S3
+// on the requested UTC date (the date prefix in the S3 key —
+// "the day the artifact was finalized"). Backed by a single
+// ListObjectsV2 call against <bucket>/cdr/<yyyy>/<mm>/<dd>/.
+// Empty `date` defaults to today's UTC date.
+//
+// page_token is the NextContinuationToken from S3 — opaque to
+// the caller. page_size is best-effort; the server caps at 1000
+// (S3 max). For large dates the frontend pages.
+//
+// FailedPrecondition when S3 archive isn't configured on the
+// server (S3_BUCKET unset). The frontend should hide the archive
+// view in that case.
+message ListCallArchiveRequest {
+  // YYYY-MM-DD (UTC). Empty = today.
+  string date = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListCallArchiveResponse {
+  repeated CallArchiveSummary calls = 1;
+  // NextContinuationToken from S3; empty when the listing is
+  // complete.
+  string next_page_token = 2;
+}
+
+// One row per archived call. `call_id` is the internal sipmesh
+// call_id used as the S3 key. `started_at` is the call's invite
+// time as recorded in the CDR (best-effort — populated when the
+// CDR JSON parses; absent for malformed rows). The frontend
+// hydrates the rest via GetCallArtifactURL.
+message CallArchiveSummary {
+  string call_id = 1;
+  // RFC 3339 timestamp from the CDR row's TsInvite. Empty when
+  // the CDR JSON couldn't be parsed (malformed; the call is
+  // still listed).
+  string started_at = 2;
+  // Bytes of the CDR JSON (small — just the header line). Lets
+  // the frontend render the list without paying a second GET
+  // per row. Empty when the row was unreadable.
+  uint32 cdr_size_bytes = 3;
+  // Whether each artifact exists. The frontend grays out the
+  // download link when false. RECORDING + SIP_TRACE may legitimately
+  // be missing (silent calls / proxy didn't see the dialog), so
+  // partial archives are normal — not an error.
+  bool has_recording = 4;
+  bool has_sip_trace = 5;
+}
+
+enum CallArtifactKind {
+  CALL_ARTIFACT_UNSPECIFIED = 0;
+  CALL_ARTIFACT_CDR         = 1;
+  CALL_ARTIFACT_RECORDING   = 2;
+  CALL_ARTIFACT_SIP_TRACE   = 3;
+}
+
+// GetCallArtifactURL returns a pre-signed S3 GET URL for the
+// requested artifact. The URL embeds time-bounded SigV4 creds —
+// the browser fetches the artifact directly from S3, no proxy
+// through sipmesh. WAVs work as <audio src> with native seek;
+// CDR + trace are small enough to fetch as plain text.
+//
+// `started_at` (RFC 3339) is required because the S3 key is
+// date-partitioned. The frontend gets it from the
+// CallArchiveSummary returned by ListCallArchive.
+//
+// NotFound when the object doesn't exist on S3.
+// FailedPrecondition when archive isn't configured.
+message GetCallArtifactURLRequest {
+  string call_id = 1;
+  CallArtifactKind kind = 2;
+  // RFC 3339; the day-bucket the artifact lives in. UTC.
+  string started_at = 3;
+  // How long the URL should be valid. Server caps at 1 hour.
+  // Default 15 minutes when zero.
+  uint32 ttl_seconds = 4;
+}
+
+message GetCallArtifactURLResponse {
+  string url = 1;
+  // RFC 3339 — when the pre-signed URL expires.
+  string expires_at = 2;
+  // For UI hint ("audio/wav", "application/json", "text/plain").
+  string content_type = 3;
+}

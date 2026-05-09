@@ -823,3 +823,105 @@ var OperatorAPI_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "sipmesh/api/v1/operatorapi.proto",
 }
+
+const (
+	SipmeshConfigSource_PullConfigSet_FullMethodName = "/sipmesh.api.v1.SipmeshConfigSource/PullConfigSet"
+)
+
+// SipmeshConfigSourceClient is the client API for SipmeshConfigSource service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type SipmeshConfigSourceClient interface {
+	PullConfigSet(ctx context.Context, in *PullConfigSetRequest, opts ...grpc.CallOption) (*PullConfigSetResponse, error)
+}
+
+type sipmeshConfigSourceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSipmeshConfigSourceClient(cc grpc.ClientConnInterface) SipmeshConfigSourceClient {
+	return &sipmeshConfigSourceClient{cc}
+}
+
+func (c *sipmeshConfigSourceClient) PullConfigSet(ctx context.Context, in *PullConfigSetRequest, opts ...grpc.CallOption) (*PullConfigSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PullConfigSetResponse)
+	err := c.cc.Invoke(ctx, SipmeshConfigSource_PullConfigSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SipmeshConfigSourceServer is the server API for SipmeshConfigSource service.
+// All implementations must embed UnimplementedSipmeshConfigSourceServer
+// for forward compatibility.
+type SipmeshConfigSourceServer interface {
+	PullConfigSet(context.Context, *PullConfigSetRequest) (*PullConfigSetResponse, error)
+	mustEmbedUnimplementedSipmeshConfigSourceServer()
+}
+
+// UnimplementedSipmeshConfigSourceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedSipmeshConfigSourceServer struct{}
+
+func (UnimplementedSipmeshConfigSourceServer) PullConfigSet(context.Context, *PullConfigSetRequest) (*PullConfigSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PullConfigSet not implemented")
+}
+func (UnimplementedSipmeshConfigSourceServer) mustEmbedUnimplementedSipmeshConfigSourceServer() {}
+func (UnimplementedSipmeshConfigSourceServer) testEmbeddedByValue()                             {}
+
+// UnsafeSipmeshConfigSourceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SipmeshConfigSourceServer will
+// result in compilation errors.
+type UnsafeSipmeshConfigSourceServer interface {
+	mustEmbedUnimplementedSipmeshConfigSourceServer()
+}
+
+func RegisterSipmeshConfigSourceServer(s grpc.ServiceRegistrar, srv SipmeshConfigSourceServer) {
+	// If the following call panics, it indicates UnimplementedSipmeshConfigSourceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&SipmeshConfigSource_ServiceDesc, srv)
+}
+
+func _SipmeshConfigSource_PullConfigSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullConfigSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SipmeshConfigSourceServer).PullConfigSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SipmeshConfigSource_PullConfigSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SipmeshConfigSourceServer).PullConfigSet(ctx, req.(*PullConfigSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// SipmeshConfigSource_ServiceDesc is the grpc.ServiceDesc for SipmeshConfigSource service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SipmeshConfigSource_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "sipmesh.api.v1.SipmeshConfigSource",
+	HandlerType: (*SipmeshConfigSourceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "PullConfigSet",
+			Handler:    _SipmeshConfigSource_PullConfigSet_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sipmesh/api/v1/operatorapi.proto",
+}

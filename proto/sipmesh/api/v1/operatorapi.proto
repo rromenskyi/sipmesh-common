@@ -814,3 +814,63 @@ message GetCallArtifactURLResponse {
   // For UI hint ("audio/wav", "application/json", "text/plain").
   string content_type = 3;
 }
+
+// ============================================================
+// SipmeshConfigSource — boot-pull contract
+// ============================================================
+//
+// The frontend backend implements this service. sipmesh's meshctl
+// dials it on boot when SIPMESH_CONFIG_PULL_ADDR is set, asks for
+// the active OperatorConfig snapshot for the deployment, and seeds
+// its in-process configstore from the response. From that point
+// forward Apply pushes drive updates through the normal ConfigSet
+// path; meshctl never re-pulls.
+//
+// Behaviour matrix (sipmesh side):
+//
+//   SIPMESH_CONFIG_PULL_ADDR set + dial succeeds
+//       → seed from response.config (empty config = boot empty,
+//         valid initial state for never-applied deployments)
+//   SIPMESH_CONFIG_PULL_ADDR set + dial fails / RPC error
+//       → fall back to BootstrapDir (operator's safety net for
+//         frontend-down scenarios). If BootstrapDir is also empty,
+//         meshctl boots empty and waits for a frontend Apply push.
+//   SIPMESH_CONFIG_PULL_ADDR unset
+//       → standalone mode: BootstrapDir is the only source. This
+//         is the dev-laptop / disaster-recovery path that doesn't
+//         depend on a frontend backend at all.
+//
+// Auth model: Bearer token over gRPC, same shape as OperatorAPI's
+// auth. The frontend backend authoritatively resolves which
+// deployment / tenant the caller represents from the token, so
+// the request body carries no tenant_id — that prevents an
+// attacker with a leaked token from pulling another tenant's
+// config.
+
+service SipmeshConfigSource {
+  rpc PullConfigSet(PullConfigSetRequest) returns (PullConfigSetResponse);
+}
+
+message PullConfigSetRequest {
+  // Optional ConfigSet group name. Empty = "default", which is
+  // what every single-deployment install uses today. Non-empty
+  // is a forward-looking hook for multi-group deployments — the
+  // frontend backend may reject unknown values with
+  // InvalidArgument.
+  string group = 1;
+}
+
+message PullConfigSetResponse {
+  // Same typed snapshot ApplyOperatorConfig consumes — Trunks +
+  // Routes + Pipelines + version. An empty `config` (no trunks /
+  // routes / pipelines) paired with `version: 0` is a valid
+  // never-applied response — meshctl boots empty and waits for
+  // the first Apply push.
+  OperatorConfig config = 1;
+
+  // Echoes the version on the snapshot so meshctl can seed its
+  // OCC counter. 0 = empty / never applied. Subsequent
+  // ApplyOperatorConfig calls from the frontend pass this value
+  // as `parent_version` to win the optimistic-concurrency check.
+  uint64 version = 2;
+}

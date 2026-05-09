@@ -401,6 +401,7 @@ message PipelineStep {
   BranchStep   branch   = 7;
   DTMFStep     dtmf     = 8;
   SetCustomFieldStep set_custom_field = 9;
+  PauseStep    pause    = 10;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -489,6 +490,17 @@ message SetCustomFieldStep {
   // Value supports the engine's variable-substitution
   // ("${last_dtmf}", "${transcript}", etc).
   string value = 2;
+}
+
+// PauseStep — block the pipeline for ms milliseconds with no
+// audio output. Inserts a deliberate gap between previous and
+// next step (e.g. between a SayStep and a ListenStep so the
+// caller has half a second of dead air to start replying instead
+// of being cut off mid-syllable). Maps to flow.PauseStep on the
+// edge runtime; flowconfig.pauseSchema is the existing YAML
+// shape — this proto field exposes it through the typed API.
+message PauseStep {
+  uint32 ms = 1;
 }
 
 // ============================================================

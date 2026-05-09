@@ -402,6 +402,10 @@ message PipelineStep {
   DTMFStep     dtmf     = 8;
   SetCustomFieldStep set_custom_field = 9;
   PauseStep    pause    = 10;
+  HoldStep     hold     = 11;
+  UnholdStep   unhold   = 12;
+  DTMFCollectStep dtmf_collect = 13;
+  ReadyForBridgeStep ready_for_bridge = 14;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -491,6 +495,54 @@ message SetCustomFieldStep {
   // ("${last_dtmf}", "${transcript}", etc).
   string value = 2;
 }
+
+// HoldStep — engage hold on the current call leg. Edge runtime
+// drops bridge-relay output and either pumps a pre-encoded MOH
+// clip looped (mode=moh, default) or plays silence (mode=mute).
+// The held leg's caller hears music or silence; the other leg
+// continues in whatever state it was in (typically the operator
+// is doing something else — looking up customer info, asking a
+// supervisor, etc). Pair with UnholdStep to release.
+//
+// Standalone equivalent of WaitingPolicy.MODE_MUSIC, which only
+// applies inside a DialStep's ringing window. Use HoldStep when
+// you want MOH OUTSIDE of a Dial — e.g. while running an
+// HTTPCallback or DatabaseLookup.
+message HoldStep {
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_MOH         = 1;  // play music-on-hold (default)
+    MODE_MUTE        = 2;  // silence; no playback
+  }
+  Mode mode = 1;
+}
+
+// UnholdStep — release the hold engaged by a previous HoldStep.
+// No fields; presence of the step is the signal. Must follow a
+// HoldStep on the same leg in the same pipeline (validated at
+// parse time).
+message UnholdStep {}
+
+// DTMFCollectStep — collect a multi-digit DTMF buffer (vs the
+// single-key DTMFStep). Useful for "enter your account number"
+// patterns. Stops on terminator key (default '#'), max_digits,
+// or inter_digit_timeout_ms whichever fires first. Result lands
+// in CallState as `last_dtmf_buffer` for downstream branching.
+message DTMFCollectStep {
+  uint32 max_digits             = 1;
+  uint32 inter_digit_timeout_ms = 2;
+  uint32 max_total_ms           = 3;
+  string terminator             = 4;  // default "#"
+}
+
+// ReadyForBridgeStep — explicit signal that this leg has
+// completed pre-bridge prep (greeting / DTMF auth / PIN check)
+// and is ready to be bridged with a peer leg. Used by paired
+// pipelines: each leg runs its own pre-bridge sequence ending in
+// ReadyForBridgeStep, then a controlling actor (proxy / external)
+// emits the BridgeStep on whichever side. No fields; positional
+// signal only.
+message ReadyForBridgeStep {}
 
 // PauseStep — block the pipeline for ms milliseconds with no
 // audio output. Inserts a deliberate gap between previous and

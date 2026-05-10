@@ -411,6 +411,7 @@ message PipelineStep {
   HTTPCallbackStep http_callback = 17;
   LabelStep    label     = 18;
   GotoStep     goto      = 19;
+  RecordStep   record    = 20;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -680,6 +681,68 @@ message HTTPCallbackStep {
 // same scope are also rejected.
 message LabelStep {
   string name = 1;
+}
+
+// RecordStep — capture caller audio to a WAV file. Symmetric with
+// PlayFileStep (PlayFile sends, Record receives) — different
+// audience, same WAV pipeline. Used for voicemail-style "leave a
+// message" flows, IVR audit trails, ML training-data capture, and
+// any scenario where the operator needs a per-call durable audio
+// artefact beyond the standard whole-call recording.
+//
+// Output:
+//   - File path resolves under the edge's RECORD_DIR (chart's
+//     `edge.recordDir`, default `/var/lib/sipmesh/recordings/`).
+//     Per-step path is filepath.Clean'd and rejected if it escapes
+//     the root (mirrors PlayFileStep's traversal-safe resolution).
+//     Empty path = synthesise one from internal_call_id +
+//     timestamp + step index.
+//   - Format: 16-bit signed linear, 8 kHz mono — same telephony
+//     profile as the boot greeting / MOH WAV path. Wideband (G.722
+//     16 kHz) downsamples on the way in, matching the existing
+//     whole-call recording behaviour.
+//   - When the edge's S3 archive sink is configured, the WAV is
+//     also uploaded under the same prefix the call's CDR uses.
+//
+// Endpointing — when the step finishes:
+//   - max_duration_ms (required, capped at 600000 = 10 min
+//     server-side): hard wall-clock cap, even if the caller keeps
+//     talking. Operators MUST set this; "record forever" is never
+//     the intent.
+//   - silence_endpoint_ms (optional): post-voice silence that
+//     trips early endpoint. Empty = no silence detection (record
+//     the full max_duration_ms).
+//   - dtmf_terminator (optional): single digit ("0"-"9"/"*"/"#")
+//     that terminates the recording when the caller presses it.
+//     Empty = DTMF doesn't end the recording.
+//
+// Result lands in CallState.LastRecording — a small struct holding
+// the file path + duration + finish reason — for downstream
+// SetCustomFieldStep / HTTPCallbackStep consumption (e.g. POST the
+// path to a CRM webhook to attach the voicemail to a ticket).
+//
+// `result_field` (optional) folds the recorded path verbatim into
+// CallState.CustomFields under the named key, mirroring
+// HTTPCallbackStep's response_field shorthand.
+message RecordStep {
+  // Path relative to RECORD_DIR. Empty = auto-derive from
+  // internal_call_id + step index. Authored paths support
+  // ${...} substitution for run-time names like
+  // "voicemail/${caller}/${internal_call_id}.wav".
+  string path = 1;
+  // Hard wall-clock cap. Required (rejected at 0). Server caps
+  // at 600000ms (10 min).
+  uint32 max_duration_ms = 2;
+  // VAD post-voice silence in ms that ends the recording. 0 =
+  // disabled (full max_duration_ms).
+  uint32 silence_endpoint_ms = 3;
+  // Single-digit DTMF that ends the recording (e.g. "#" for
+  // "press hash when done"). Empty = no DTMF endpoint.
+  string dtmf_terminator = 4;
+  // Optional CallState.CustomFields key for the recorded path.
+  // Empty = don't write back (LastRecording struct still holds
+  // it for downstream steps).
+  string result_field = 5;
 }
 
 // GotoStep — unconditional jump to a LabelStep with matching name

@@ -5353,6 +5353,17 @@ type CallTranscript struct {
 	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
 	Confidence    float32                `protobuf:"fixed32,3,opt,name=confidence,proto3" json:"confidence,omitempty"`
 	RecordingPath string                 `protobuf:"bytes,4,opt,name=recording_path,json=recordingPath,proto3" json:"recording_path,omitempty"` // file:// URI, same as CallRecordingDone.uri
+	// Speaker role. "caller" (STT of inbound RTP), "bot" (text the
+	// engine fed into TTS — ConverseStep replies), "operator" (STT
+	// of the bridged peer leg's audio). Empty for legacy events
+	// emitted before the field landed; consumers should default to
+	// "caller" then.
+	Role string `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"`
+	// RFC 3339 wall-clock timestamp of when this turn entered the
+	// pipeline (STT result for caller/operator, TTS-source text
+	// commit for bot). Operators align to the recording timeline by
+	// subtracting CallEvents started_at. Empty on legacy events.
+	AtIso         string `protobuf:"bytes,6,opt,name=at_iso,json=atIso,proto3" json:"at_iso,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5411,6 +5422,20 @@ func (x *CallTranscript) GetConfidence() float32 {
 func (x *CallTranscript) GetRecordingPath() string {
 	if x != nil {
 		return x.RecordingPath
+	}
+	return ""
+}
+
+func (x *CallTranscript) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *CallTranscript) GetAtIso() string {
+	if x != nil {
+		return x.AtIso
 	}
 	return ""
 }
@@ -6684,14 +6709,16 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x05digit\x18\x01 \x01(\tR\x05digit\x12\x1f\n" +
 	"\vduration_ms\x18\x02 \x01(\rR\n" +
 	"durationMs\x12\x16\n" +
-	"\x06volume\x18\x03 \x01(\rR\x06volume\"\x87\x01\n" +
+	"\x06volume\x18\x03 \x01(\rR\x06volume\"\xb2\x01\n" +
 	"\x0eCallTranscript\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1a\n" +
 	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x1e\n" +
 	"\n" +
 	"confidence\x18\x03 \x01(\x02R\n" +
 	"confidence\x12%\n" +
-	"\x0erecording_path\x18\x04 \x01(\tR\rrecordingPath\"\x96\x01\n" +
+	"\x0erecording_path\x18\x04 \x01(\tR\rrecordingPath\x12\x12\n" +
+	"\x04role\x18\x05 \x01(\tR\x04role\x12\x15\n" +
+	"\x06at_iso\x18\x06 \x01(\tR\x05atIso\"\x96\x01\n" +
 	"\vChatMessage\x120\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x1c.sipmesh.v1.ChatMessage.RoleR\x04role\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\"A\n" +

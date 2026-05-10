@@ -412,6 +412,7 @@ message PipelineStep {
   LabelStep    label     = 18;
   GotoStep     goto      = 19;
   RecordStep   record    = 20;
+  SubPipelineStep sub_pipeline = 21;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -773,6 +774,47 @@ message RecordStep {
 // parse time.
 message GotoStep {
   string label = 1;
+}
+
+// SubPipelineStep — call into a named pipeline as a reusable
+// subroutine. Composable replacement for copy-pasting common
+// sub-flows (auth gate, business-hours check, voicemail tail) into
+// every entry pipeline. The named pipeline runs its full step list
+// against the SAME CallState (same caller, same dialog, same
+// CustomFields), then control returns to the next step in the
+// caller.
+//
+// Args populate a per-frame template scope visible only inside the
+// sub-pipeline:
+//
+//	${arg.<name>}  → args[name]   (empty when name absent)
+//
+// They DON'T leak into the parent's substitution scope. Other
+// CallState fields (caller, called, custom.<key>, last_dtmf, etc)
+// behave normally — the sub-pipeline sees the same call.
+//
+// Loop guard: each SubPipelineStep call recurses through RunFlow,
+// which gets a fresh transition budget (default 10000). Mutual
+// recursion via SubPipeline still terminates by exhausting the
+// outer caller's budget eventually; pure tail-call recursion across
+// pipelines does NOT optimise into a flat loop and burns one
+// recursion frame per call.
+//
+// Validation (parser-time):
+//   - `name` must reference a Pipeline that exists in the same
+//     OperatorConfig. Cross-config jumps not supported.
+//   - Self-reference is allowed but operator must guarantee an
+//     escape (BranchStep + counter), same contract as GotoStep
+//     loops.
+message SubPipelineStep {
+  // Pipeline name to invoke. Must match a Pipeline.name in the
+  // active OperatorConfig.pipelines.
+  string name = 1;
+  // Per-call args visible in the sub-pipeline only as
+  // ${arg.<key>}. Values support ${...} substitution against the
+  // caller's scope (so the caller can pass through its own
+  // ${caller}, ${custom.foo}, etc).
+  map<string, string> args = 2;
 }
 
 // ============================================================

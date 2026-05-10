@@ -409,6 +409,8 @@ message PipelineStep {
   PlayFileStep play_file = 15;
   AnswerStep   answer    = 16;
   HTTPCallbackStep http_callback = 17;
+  LabelStep    label     = 18;
+  GotoStep     goto      = 19;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -658,6 +660,47 @@ message HTTPCallbackStep {
   // Operators set explicitly when the upstream returns 422 / 404
   // as part of the contract.
   repeated uint32 expected_status = 8;
+}
+
+// LabelStep — named target for GotoStep within the same step list.
+// Pure positional marker; runtime no-op (consumes zero ms when the
+// PC steps over it). Operators sprinkle these throughout a pipeline
+// to give GotoStep stable jump destinations that survive step
+// reordering / insertion.
+//
+// Scope: a label is visible only inside the steps[] slice it
+// appears in. BranchStep cases are nested step lists with their
+// own scope — labels declared inside a case can't be targeted from
+// outside the case (and vice versa). The flow runtime validates
+// this at parse / build time, before any call routes through the
+// pipeline.
+//
+// Naming: `name` is matched verbatim by GotoStep.label. Empty
+// names are rejected at validation; duplicate names within the
+// same scope are also rejected.
+message LabelStep {
+  string name = 1;
+}
+
+// GotoStep — unconditional jump to a LabelStep with matching name
+// in the SAME step list. Used for menu-style flows ("press 1 →
+// goto sales / press 2 → goto support") and replay loops ("listen
+// → if invalid input goto retry"). Composes with BranchStep when
+// the jump is gated on a predicate.
+//
+// Loop guard: the flow runtime caps total step transitions per
+// pipeline run (not just gotos). A pipeline that goto-loops
+// indefinitely will return an error after the cap fires, instead
+// of hanging the call. Operators should pair Goto with
+// SetCustomFieldStep + BranchStep to bound retry counts
+// explicitly.
+//
+// Validation: `label` must reference a LabelStep that exists in
+// the same scope. Cross-scope jumps (out of a branch case, into
+// a sub-pipeline) are not supported in v1 and are rejected at
+// parse time.
+message GotoStep {
+  string label = 1;
 }
 
 // ============================================================

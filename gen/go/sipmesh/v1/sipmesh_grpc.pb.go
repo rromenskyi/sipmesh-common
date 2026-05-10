@@ -1535,6 +1535,7 @@ const (
 	ProxyControl_OriginateCall_FullMethodName      = "/sipmesh.v1.ProxyControl/OriginateCall"
 	ProxyControl_GetCPSStatus_FullMethodName       = "/sipmesh.v1.ProxyControl/GetCPSStatus"
 	ProxyControl_GetClientEndpoints_FullMethodName = "/sipmesh.v1.ProxyControl/GetClientEndpoints"
+	ProxyControl_DescribeTrunk_FullMethodName      = "/sipmesh.v1.ProxyControl/DescribeTrunk"
 )
 
 // ProxyControlClient is the client API for ProxyControl service.
@@ -1572,6 +1573,13 @@ type ProxyControlClient interface {
 	// should degrade gracefully — e.g. if SipWssUrl is empty,
 	// softphone is unavailable and the UI should reflect that.
 	GetClientEndpoints(ctx context.Context, in *GetClientEndpointsRequest, opts ...grpc.CallOption) (*GetClientEndpointsResponse, error)
+	// DescribeTrunk reports a live health snapshot for one trunk:
+	// REGISTER state for register_outbound, peer-target reachability
+	// signal for peer, currently-bound count for register_inbound.
+	// Reads the in-process trunkmgr.RegistrarSet + regbind store —
+	// no external dial — so it's cheap and read-only. Returns
+	// NotFound when trunk_id doesn't resolve in the loaded registry.
+	DescribeTrunk(ctx context.Context, in *DescribeTrunkRequest, opts ...grpc.CallOption) (*DescribeTrunkResponse, error)
 }
 
 type proxyControlClient struct {
@@ -1606,6 +1614,16 @@ func (c *proxyControlClient) GetClientEndpoints(ctx context.Context, in *GetClie
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetClientEndpointsResponse)
 	err := c.cc.Invoke(ctx, ProxyControl_GetClientEndpoints_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *proxyControlClient) DescribeTrunk(ctx context.Context, in *DescribeTrunkRequest, opts ...grpc.CallOption) (*DescribeTrunkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DescribeTrunkResponse)
+	err := c.cc.Invoke(ctx, ProxyControl_DescribeTrunk_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1647,6 +1665,13 @@ type ProxyControlServer interface {
 	// should degrade gracefully — e.g. if SipWssUrl is empty,
 	// softphone is unavailable and the UI should reflect that.
 	GetClientEndpoints(context.Context, *GetClientEndpointsRequest) (*GetClientEndpointsResponse, error)
+	// DescribeTrunk reports a live health snapshot for one trunk:
+	// REGISTER state for register_outbound, peer-target reachability
+	// signal for peer, currently-bound count for register_inbound.
+	// Reads the in-process trunkmgr.RegistrarSet + regbind store —
+	// no external dial — so it's cheap and read-only. Returns
+	// NotFound when trunk_id doesn't resolve in the loaded registry.
+	DescribeTrunk(context.Context, *DescribeTrunkRequest) (*DescribeTrunkResponse, error)
 	mustEmbedUnimplementedProxyControlServer()
 }
 
@@ -1665,6 +1690,9 @@ func (UnimplementedProxyControlServer) GetCPSStatus(context.Context, *GetCPSStat
 }
 func (UnimplementedProxyControlServer) GetClientEndpoints(context.Context, *GetClientEndpointsRequest) (*GetClientEndpointsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetClientEndpoints not implemented")
+}
+func (UnimplementedProxyControlServer) DescribeTrunk(context.Context, *DescribeTrunkRequest) (*DescribeTrunkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DescribeTrunk not implemented")
 }
 func (UnimplementedProxyControlServer) mustEmbedUnimplementedProxyControlServer() {}
 func (UnimplementedProxyControlServer) testEmbeddedByValue()                      {}
@@ -1741,6 +1769,24 @@ func _ProxyControl_GetClientEndpoints_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyControl_DescribeTrunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DescribeTrunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyControlServer).DescribeTrunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyControl_DescribeTrunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyControlServer).DescribeTrunk(ctx, req.(*DescribeTrunkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProxyControl_ServiceDesc is the grpc.ServiceDesc for ProxyControl service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1759,6 +1805,10 @@ var ProxyControl_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetClientEndpoints",
 			Handler:    _ProxyControl_GetClientEndpoints_Handler,
+		},
+		{
+			MethodName: "DescribeTrunk",
+			Handler:    _ProxyControl_DescribeTrunk_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

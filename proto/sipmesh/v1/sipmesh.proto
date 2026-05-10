@@ -763,6 +763,50 @@ service ProxyControl {
   // should degrade gracefully — e.g. if SipWssUrl is empty,
   // softphone is unavailable and the UI should reflect that.
   rpc GetClientEndpoints (GetClientEndpointsRequest) returns (GetClientEndpointsResponse);
+
+  // DescribeTrunk reports a live health snapshot for one trunk:
+  // REGISTER state for register_outbound, peer-target reachability
+  // signal for peer, currently-bound count for register_inbound.
+  // Reads the in-process trunkmgr.RegistrarSet + regbind store —
+  // no external dial — so it's cheap and read-only. Returns
+  // NotFound when trunk_id doesn't resolve in the loaded registry.
+  rpc DescribeTrunk (DescribeTrunkRequest) returns (DescribeTrunkResponse);
+}
+
+message DescribeTrunkRequest {
+  // Trunk.id from OperatorConfig / trunks.yaml.
+  string trunk_id = 1;
+}
+
+message DescribeTrunkResponse {
+  string trunk_id = 1;
+  // Trunk kind ("register_outbound" / "peer" / "register_inbound").
+  // Lowercase string to match the YAML schema; consumer maps to
+  // its own enum if needed.
+  string kind = 2;
+
+  // Registrar state — meaningful for register_outbound only.
+  // register_active=false on peer / register_inbound.
+  bool register_active = 10;
+  // RFC 3339 string of the last successful REGISTER 2xx, empty when
+  // never seen.
+  string last_register_at_iso = 11;
+  // Last error message from the registrar loop, empty when current
+  // state is success.
+  string last_error = 12;
+  // True when this proxy replica holds the registrar lease for this
+  // trunk (multi-replica deployments). Always true on single-replica.
+  bool leader = 13;
+
+  // Inbound binding count — meaningful for register_inbound only.
+  // Number of currently-REGISTERed UAs (softphones / hardphones)
+  // bound to this trunk. 0 on peer / register_outbound.
+  uint32 inbound_bindings = 20;
+
+  // Calls in progress through this trunk. Sourced from the dialog
+  // store; counts both inbound and outbound legs that reference
+  // this trunk_id.
+  uint32 calls_in_progress = 21;
 }
 
 message OriginateCallRequest {

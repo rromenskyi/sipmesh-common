@@ -54,6 +54,7 @@ const (
 	OperatorAPI_ApplyOperatorConfig_FullMethodName = "/sipmesh.api.v1.OperatorAPI/ApplyOperatorConfig"
 	OperatorAPI_ListTrunks_FullMethodName          = "/sipmesh.api.v1.OperatorAPI/ListTrunks"
 	OperatorAPI_GetTrunk_FullMethodName            = "/sipmesh.api.v1.OperatorAPI/GetTrunk"
+	OperatorAPI_DescribeTrunk_FullMethodName       = "/sipmesh.api.v1.OperatorAPI/DescribeTrunk"
 	OperatorAPI_ListPipelines_FullMethodName       = "/sipmesh.api.v1.OperatorAPI/ListPipelines"
 	OperatorAPI_GetPipeline_FullMethodName         = "/sipmesh.api.v1.OperatorAPI/GetPipeline"
 	OperatorAPI_ListRoutes_FullMethodName          = "/sipmesh.api.v1.OperatorAPI/ListRoutes"
@@ -80,6 +81,7 @@ type OperatorAPIClient interface {
 	// ----- Per-resource read views -----
 	ListTrunks(ctx context.Context, in *ListTrunksRequest, opts ...grpc.CallOption) (*ListTrunksResponse, error)
 	GetTrunk(ctx context.Context, in *GetTrunkRequest, opts ...grpc.CallOption) (*Trunk, error)
+	DescribeTrunk(ctx context.Context, in *DescribeTrunkRequest, opts ...grpc.CallOption) (*DescribeTrunkResponse, error)
 	ListPipelines(ctx context.Context, in *ListPipelinesRequest, opts ...grpc.CallOption) (*ListPipelinesResponse, error)
 	GetPipeline(ctx context.Context, in *GetPipelineRequest, opts ...grpc.CallOption) (*Pipeline, error)
 	ListRoutes(ctx context.Context, in *ListRoutesRequest, opts ...grpc.CallOption) (*ListRoutesResponse, error)
@@ -146,6 +148,16 @@ func (c *operatorAPIClient) GetTrunk(ctx context.Context, in *GetTrunkRequest, o
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Trunk)
 	err := c.cc.Invoke(ctx, OperatorAPI_GetTrunk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorAPIClient) DescribeTrunk(ctx context.Context, in *DescribeTrunkRequest, opts ...grpc.CallOption) (*DescribeTrunkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DescribeTrunkResponse)
+	err := c.cc.Invoke(ctx, OperatorAPI_DescribeTrunk_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -320,6 +332,7 @@ type OperatorAPIServer interface {
 	// ----- Per-resource read views -----
 	ListTrunks(context.Context, *ListTrunksRequest) (*ListTrunksResponse, error)
 	GetTrunk(context.Context, *GetTrunkRequest) (*Trunk, error)
+	DescribeTrunk(context.Context, *DescribeTrunkRequest) (*DescribeTrunkResponse, error)
 	ListPipelines(context.Context, *ListPipelinesRequest) (*ListPipelinesResponse, error)
 	GetPipeline(context.Context, *GetPipelineRequest) (*Pipeline, error)
 	ListRoutes(context.Context, *ListRoutesRequest) (*ListRoutesResponse, error)
@@ -363,6 +376,9 @@ func (UnimplementedOperatorAPIServer) ListTrunks(context.Context, *ListTrunksReq
 }
 func (UnimplementedOperatorAPIServer) GetTrunk(context.Context, *GetTrunkRequest) (*Trunk, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTrunk not implemented")
+}
+func (UnimplementedOperatorAPIServer) DescribeTrunk(context.Context, *DescribeTrunkRequest) (*DescribeTrunkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DescribeTrunk not implemented")
 }
 func (UnimplementedOperatorAPIServer) ListPipelines(context.Context, *ListPipelinesRequest) (*ListPipelinesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListPipelines not implemented")
@@ -495,6 +511,24 @@ func _OperatorAPI_GetTrunk_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OperatorAPIServer).GetTrunk(ctx, req.(*GetTrunkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperatorAPI_DescribeTrunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DescribeTrunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorAPIServer).DescribeTrunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperatorAPI_DescribeTrunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorAPIServer).DescribeTrunk(ctx, req.(*DescribeTrunkRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -759,6 +793,10 @@ var OperatorAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTrunk",
 			Handler:    _OperatorAPI_GetTrunk_Handler,
+		},
+		{
+			MethodName: "DescribeTrunk",
+			Handler:    _OperatorAPI_DescribeTrunk_Handler,
 		},
 		{
 			MethodName: "ListPipelines",

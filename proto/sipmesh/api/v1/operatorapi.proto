@@ -563,6 +563,46 @@ message ListTrunksRequest {}
 message ListTrunksResponse  { repeated Trunk trunks = 1; }
 message GetTrunkRequest     { string id = 1; }
 
+// DescribeTrunk — live health snapshot for one trunk. Reads the
+// REGISTER state + bound-UAs count + in-progress-calls count from
+// the proxy replica that holds this trunk's registrar lease.
+// Returns NotFound when the trunk_id doesn't resolve in the
+// active OperatorConfig.
+message DescribeTrunkRequest {
+  string trunk_id = 1;
+}
+
+message DescribeTrunkResponse {
+  string trunk_id = 1;
+  // "register_outbound" / "peer" / "register_inbound" — lowercase
+  // YAML-shape, matches Trunk_Kind enum's lowercased label.
+  string kind = 2;
+
+  // Registrar state. register_active is true only for
+  // register_outbound trunks whose last REGISTER was 2xx and
+  // hasn't expired. Always false for peer / register_inbound.
+  bool register_active = 10;
+  // RFC 3339 of the last successful REGISTER 2xx. Empty when
+  // never seen.
+  string last_register_at_iso = 11;
+  // Last error from the registrar loop (auth fail, network, 4xx).
+  // Empty when current state is success.
+  string last_error = 12;
+  // True when this proxy replica holds the registrar lease for
+  // this trunk in multi-replica deployments. Always true on the
+  // single-replica dev pilot.
+  bool leader = 13;
+
+  // Currently-REGISTERed UAs count — meaningful for
+  // register_inbound only. 0 on peer / register_outbound.
+  uint32 inbound_bindings = 20;
+
+  // Calls in progress through this trunk (inbound + outbound).
+  // Sourced from the dialog store at the proxy replica that
+  // serves this RPC.
+  uint32 calls_in_progress = 21;
+}
+
 message ListPipelinesRequest {}
 message ListPipelinesResponse { repeated Pipeline pipelines = 1; }
 message GetPipelineRequest   { string name = 1; }
@@ -700,6 +740,7 @@ service OperatorAPI {
   // ----- Per-resource read views -----
   rpc ListTrunks(ListTrunksRequest)       returns (ListTrunksResponse);
   rpc GetTrunk(GetTrunkRequest)           returns (Trunk);
+  rpc DescribeTrunk(DescribeTrunkRequest) returns (DescribeTrunkResponse);
   rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse);
   rpc GetPipeline(GetPipelineRequest)     returns (Pipeline);
   rpc ListRoutes(ListRoutesRequest)       returns (ListRoutesResponse);

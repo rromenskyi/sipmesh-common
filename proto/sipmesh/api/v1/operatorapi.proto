@@ -111,6 +111,85 @@ message ApplyOperatorConfigResponse {
   bool applied = 3;
 }
 
+// =============================================================
+// Partial upsert / replace / delete RPCs (operator console save flow)
+// =============================================================
+//
+// Each request carries `parent_version` (last version observed by
+// the caller) for OCC. Server merges the requested mutation into
+// the live ConfigSet, validates the merged result against live
+// cross-references (route → pipeline, route → trunk, etc.), and
+// either writes a new version or returns Aborted (concurrent
+// write) / InvalidArgument (validation failed) / NotFound (the
+// resource the caller wants to delete doesn't exist).
+//
+// Idempotency: if the post-merge OperatorConfig is byte-equal to
+// the pre-merge one (proto.Equal at the affected collection),
+// no new version is written; response carries no_op=true.
+//
+// Server-side `parent_version=0` is force-apply (skips OCC) and
+// is reserved for legacy ApplyOperatorConfig — partial Upsert
+// handlers reject parent_version=0 with InvalidArgument to keep
+// the contract honest (frontend always reads-then-writes).
+
+message UpsertPipelineRequest {
+  string   group          = 1;
+  uint64   parent_version = 2;
+  string   applied_by     = 3;  // audit string, mirrors ApplyOperatorConfigRequest.applied_by
+  Pipeline pipeline       = 4;
+}
+
+message UpsertTrunkRequest {
+  string group          = 1;
+  uint64 parent_version = 2;
+  string applied_by     = 3;
+  Trunk  trunk          = 4;
+}
+
+message ReplaceRoutesRequest {
+  string         group          = 1;
+  uint64         parent_version = 2;
+  string         applied_by     = 3;
+  // Full replacement of OperatorConfig.routes — order significant.
+  // Empty list = wipe routes (rejected if any pipeline in the
+  // ConfigSet expects a route, but no such constraint today).
+  repeated Route routes         = 4;
+}
+
+message DeletePipelineRequest {
+  string group          = 1;
+  uint64 parent_version = 2;
+  string applied_by     = 3;
+  string name           = 4;  // unique key
+}
+
+message DeleteTrunkRequest {
+  string group          = 1;
+  uint64 parent_version = 2;
+  string applied_by     = 3;
+  string id             = 4;  // unique key
+}
+
+// UpsertResponse — returned by every partial RPC. On the rejected
+// path (InvalidArgument / Aborted / NotFound), the gRPC error
+// carries the canonical status; `diagnostics` are populated only
+// on InvalidArgument and mirror the ApplyOperatorConfigResponse
+// shape so frontend has a single rendering path.
+message UpsertResponse {
+  // Version of ConfigSet after the operation. On no_op or rejected
+  // paths, this is the CURRENT version (not the would-be next one).
+  uint64 version = 1;
+  // ETag of ConfigSet after the operation. Same semantics as version.
+  string etag    = 2;
+  // True when the request was a no-op — incoming resource was
+  // proto.Equal to what's already in the ConfigSet. Frontend can
+  // skip the "saved" toast or render a softer signal.
+  bool no_op    = 3;
+  // Populated on InvalidArgument. Same shape as ApplyOperatorConfig
+  // diagnostics; frontend renders inline against field paths.
+  repeated ConfigDiagnostic diagnostics = 4;
+}
+
 // ConfigDiagnostic — a single validation finding. Frontend renders
 // these inline in the constructor UI to flag specific fields.
 message ConfigDiagnostic {
@@ -1159,6 +1238,35 @@ service OperatorAPI {
   // ----- Atomic config (the constructor's main hook) -----
   rpc GetOperatorConfig(GetOperatorConfigRequest) returns (OperatorConfigResponse);
   rpc ApplyOperatorConfig(ApplyOperatorConfigRequest) returns (ApplyOperatorConfigResponse);
+
+  // ----- Per-resource partial upserts (operator console save flow) -----
+  //
+  // Frontend pushes only what changed; the engine merges the incoming
+  // resource into the current ConfigSet and re-validates the merged
+  // result against live cross-references. Concurrency is handled via
+  // ConfigSet-wide parent_version (matching ApplyOperatorConfig OCC) —
+  // a stale parent_version returns ABORTED, the BFF refetches and
+  // bounded-retries.
+  //
+  // Each handler:
+  //   1. Loads live ConfigSet body, unmarshals to OperatorConfig.
+  //   2. Mutates a local copy by key (Pipeline.name / Trunk.id) or
+  //      replaces a list (Routes).
+  //   3. Skips write if proto.Equal before/after — idempotent path,
+  //      returns the current version with no_op=true.
+  //   4. Runs validateOperatorConfig on the merged result; structured
+  //      diagnostics on the rejected path.
+  //   5. Calls configstore.Apply with parent_version; OCC mismatch
+  //      surfaces as Aborted to the caller.
+  //
+  // Routes don't have stable IDs — ReplaceRoutes pushes the whole
+  // ordered list. Pipelines (by name) and Trunks (by id) are
+  // upsertable individually.
+  rpc UpsertPipeline(UpsertPipelineRequest) returns (UpsertResponse);
+  rpc UpsertTrunk(UpsertTrunkRequest)       returns (UpsertResponse);
+  rpc ReplaceRoutes(ReplaceRoutesRequest)   returns (UpsertResponse);
+  rpc DeletePipeline(DeletePipelineRequest) returns (UpsertResponse);
+  rpc DeleteTrunk(DeleteTrunkRequest)       returns (UpsertResponse);
 
   // ----- Per-resource read views -----
   rpc ListTrunks(ListTrunksRequest)       returns (ListTrunksResponse);

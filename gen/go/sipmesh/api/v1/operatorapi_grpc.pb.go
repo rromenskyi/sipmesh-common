@@ -52,6 +52,11 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	OperatorAPI_GetOperatorConfig_FullMethodName   = "/sipmesh.api.v1.OperatorAPI/GetOperatorConfig"
 	OperatorAPI_ApplyOperatorConfig_FullMethodName = "/sipmesh.api.v1.OperatorAPI/ApplyOperatorConfig"
+	OperatorAPI_UpsertPipeline_FullMethodName      = "/sipmesh.api.v1.OperatorAPI/UpsertPipeline"
+	OperatorAPI_UpsertTrunk_FullMethodName         = "/sipmesh.api.v1.OperatorAPI/UpsertTrunk"
+	OperatorAPI_ReplaceRoutes_FullMethodName       = "/sipmesh.api.v1.OperatorAPI/ReplaceRoutes"
+	OperatorAPI_DeletePipeline_FullMethodName      = "/sipmesh.api.v1.OperatorAPI/DeletePipeline"
+	OperatorAPI_DeleteTrunk_FullMethodName         = "/sipmesh.api.v1.OperatorAPI/DeleteTrunk"
 	OperatorAPI_ListTrunks_FullMethodName          = "/sipmesh.api.v1.OperatorAPI/ListTrunks"
 	OperatorAPI_GetTrunk_FullMethodName            = "/sipmesh.api.v1.OperatorAPI/GetTrunk"
 	OperatorAPI_DescribeTrunk_FullMethodName       = "/sipmesh.api.v1.OperatorAPI/DescribeTrunk"
@@ -78,6 +83,34 @@ type OperatorAPIClient interface {
 	// ----- Atomic config (the constructor's main hook) -----
 	GetOperatorConfig(ctx context.Context, in *GetOperatorConfigRequest, opts ...grpc.CallOption) (*OperatorConfigResponse, error)
 	ApplyOperatorConfig(ctx context.Context, in *ApplyOperatorConfigRequest, opts ...grpc.CallOption) (*ApplyOperatorConfigResponse, error)
+	// ----- Per-resource partial upserts (operator console save flow) -----
+	//
+	// Frontend pushes only what changed; the engine merges the incoming
+	// resource into the current ConfigSet and re-validates the merged
+	// result against live cross-references. Concurrency is handled via
+	// ConfigSet-wide parent_version (matching ApplyOperatorConfig OCC) —
+	// a stale parent_version returns ABORTED, the BFF refetches and
+	// bounded-retries.
+	//
+	// Each handler:
+	//  1. Loads live ConfigSet body, unmarshals to OperatorConfig.
+	//  2. Mutates a local copy by key (Pipeline.name / Trunk.id) or
+	//     replaces a list (Routes).
+	//  3. Skips write if proto.Equal before/after — idempotent path,
+	//     returns the current version with no_op=true.
+	//  4. Runs validateOperatorConfig on the merged result; structured
+	//     diagnostics on the rejected path.
+	//  5. Calls configstore.Apply with parent_version; OCC mismatch
+	//     surfaces as Aborted to the caller.
+	//
+	// Routes don't have stable IDs — ReplaceRoutes pushes the whole
+	// ordered list. Pipelines (by name) and Trunks (by id) are
+	// upsertable individually.
+	UpsertPipeline(ctx context.Context, in *UpsertPipelineRequest, opts ...grpc.CallOption) (*UpsertResponse, error)
+	UpsertTrunk(ctx context.Context, in *UpsertTrunkRequest, opts ...grpc.CallOption) (*UpsertResponse, error)
+	ReplaceRoutes(ctx context.Context, in *ReplaceRoutesRequest, opts ...grpc.CallOption) (*UpsertResponse, error)
+	DeletePipeline(ctx context.Context, in *DeletePipelineRequest, opts ...grpc.CallOption) (*UpsertResponse, error)
+	DeleteTrunk(ctx context.Context, in *DeleteTrunkRequest, opts ...grpc.CallOption) (*UpsertResponse, error)
 	// ----- Per-resource read views -----
 	ListTrunks(ctx context.Context, in *ListTrunksRequest, opts ...grpc.CallOption) (*ListTrunksResponse, error)
 	GetTrunk(ctx context.Context, in *GetTrunkRequest, opts ...grpc.CallOption) (*Trunk, error)
@@ -128,6 +161,56 @@ func (c *operatorAPIClient) ApplyOperatorConfig(ctx context.Context, in *ApplyOp
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ApplyOperatorConfigResponse)
 	err := c.cc.Invoke(ctx, OperatorAPI_ApplyOperatorConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorAPIClient) UpsertPipeline(ctx context.Context, in *UpsertPipelineRequest, opts ...grpc.CallOption) (*UpsertResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertResponse)
+	err := c.cc.Invoke(ctx, OperatorAPI_UpsertPipeline_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorAPIClient) UpsertTrunk(ctx context.Context, in *UpsertTrunkRequest, opts ...grpc.CallOption) (*UpsertResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertResponse)
+	err := c.cc.Invoke(ctx, OperatorAPI_UpsertTrunk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorAPIClient) ReplaceRoutes(ctx context.Context, in *ReplaceRoutesRequest, opts ...grpc.CallOption) (*UpsertResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertResponse)
+	err := c.cc.Invoke(ctx, OperatorAPI_ReplaceRoutes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorAPIClient) DeletePipeline(ctx context.Context, in *DeletePipelineRequest, opts ...grpc.CallOption) (*UpsertResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertResponse)
+	err := c.cc.Invoke(ctx, OperatorAPI_DeletePipeline_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operatorAPIClient) DeleteTrunk(ctx context.Context, in *DeleteTrunkRequest, opts ...grpc.CallOption) (*UpsertResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertResponse)
+	err := c.cc.Invoke(ctx, OperatorAPI_DeleteTrunk_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -329,6 +412,34 @@ type OperatorAPIServer interface {
 	// ----- Atomic config (the constructor's main hook) -----
 	GetOperatorConfig(context.Context, *GetOperatorConfigRequest) (*OperatorConfigResponse, error)
 	ApplyOperatorConfig(context.Context, *ApplyOperatorConfigRequest) (*ApplyOperatorConfigResponse, error)
+	// ----- Per-resource partial upserts (operator console save flow) -----
+	//
+	// Frontend pushes only what changed; the engine merges the incoming
+	// resource into the current ConfigSet and re-validates the merged
+	// result against live cross-references. Concurrency is handled via
+	// ConfigSet-wide parent_version (matching ApplyOperatorConfig OCC) —
+	// a stale parent_version returns ABORTED, the BFF refetches and
+	// bounded-retries.
+	//
+	// Each handler:
+	//  1. Loads live ConfigSet body, unmarshals to OperatorConfig.
+	//  2. Mutates a local copy by key (Pipeline.name / Trunk.id) or
+	//     replaces a list (Routes).
+	//  3. Skips write if proto.Equal before/after — idempotent path,
+	//     returns the current version with no_op=true.
+	//  4. Runs validateOperatorConfig on the merged result; structured
+	//     diagnostics on the rejected path.
+	//  5. Calls configstore.Apply with parent_version; OCC mismatch
+	//     surfaces as Aborted to the caller.
+	//
+	// Routes don't have stable IDs — ReplaceRoutes pushes the whole
+	// ordered list. Pipelines (by name) and Trunks (by id) are
+	// upsertable individually.
+	UpsertPipeline(context.Context, *UpsertPipelineRequest) (*UpsertResponse, error)
+	UpsertTrunk(context.Context, *UpsertTrunkRequest) (*UpsertResponse, error)
+	ReplaceRoutes(context.Context, *ReplaceRoutesRequest) (*UpsertResponse, error)
+	DeletePipeline(context.Context, *DeletePipelineRequest) (*UpsertResponse, error)
+	DeleteTrunk(context.Context, *DeleteTrunkRequest) (*UpsertResponse, error)
 	// ----- Per-resource read views -----
 	ListTrunks(context.Context, *ListTrunksRequest) (*ListTrunksResponse, error)
 	GetTrunk(context.Context, *GetTrunkRequest) (*Trunk, error)
@@ -370,6 +481,21 @@ func (UnimplementedOperatorAPIServer) GetOperatorConfig(context.Context, *GetOpe
 }
 func (UnimplementedOperatorAPIServer) ApplyOperatorConfig(context.Context, *ApplyOperatorConfigRequest) (*ApplyOperatorConfigResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ApplyOperatorConfig not implemented")
+}
+func (UnimplementedOperatorAPIServer) UpsertPipeline(context.Context, *UpsertPipelineRequest) (*UpsertResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertPipeline not implemented")
+}
+func (UnimplementedOperatorAPIServer) UpsertTrunk(context.Context, *UpsertTrunkRequest) (*UpsertResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertTrunk not implemented")
+}
+func (UnimplementedOperatorAPIServer) ReplaceRoutes(context.Context, *ReplaceRoutesRequest) (*UpsertResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReplaceRoutes not implemented")
+}
+func (UnimplementedOperatorAPIServer) DeletePipeline(context.Context, *DeletePipelineRequest) (*UpsertResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeletePipeline not implemented")
+}
+func (UnimplementedOperatorAPIServer) DeleteTrunk(context.Context, *DeleteTrunkRequest) (*UpsertResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteTrunk not implemented")
 }
 func (UnimplementedOperatorAPIServer) ListTrunks(context.Context, *ListTrunksRequest) (*ListTrunksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTrunks not implemented")
@@ -475,6 +601,96 @@ func _OperatorAPI_ApplyOperatorConfig_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OperatorAPIServer).ApplyOperatorConfig(ctx, req.(*ApplyOperatorConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperatorAPI_UpsertPipeline_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertPipelineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorAPIServer).UpsertPipeline(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperatorAPI_UpsertPipeline_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorAPIServer).UpsertPipeline(ctx, req.(*UpsertPipelineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperatorAPI_UpsertTrunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertTrunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorAPIServer).UpsertTrunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperatorAPI_UpsertTrunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorAPIServer).UpsertTrunk(ctx, req.(*UpsertTrunkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperatorAPI_ReplaceRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplaceRoutesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorAPIServer).ReplaceRoutes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperatorAPI_ReplaceRoutes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorAPIServer).ReplaceRoutes(ctx, req.(*ReplaceRoutesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperatorAPI_DeletePipeline_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePipelineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorAPIServer).DeletePipeline(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperatorAPI_DeletePipeline_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorAPIServer).DeletePipeline(ctx, req.(*DeletePipelineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperatorAPI_DeleteTrunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteTrunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperatorAPIServer).DeleteTrunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperatorAPI_DeleteTrunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperatorAPIServer).DeleteTrunk(ctx, req.(*DeleteTrunkRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -785,6 +1001,26 @@ var OperatorAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ApplyOperatorConfig",
 			Handler:    _OperatorAPI_ApplyOperatorConfig_Handler,
+		},
+		{
+			MethodName: "UpsertPipeline",
+			Handler:    _OperatorAPI_UpsertPipeline_Handler,
+		},
+		{
+			MethodName: "UpsertTrunk",
+			Handler:    _OperatorAPI_UpsertTrunk_Handler,
+		},
+		{
+			MethodName: "ReplaceRoutes",
+			Handler:    _OperatorAPI_ReplaceRoutes_Handler,
+		},
+		{
+			MethodName: "DeletePipeline",
+			Handler:    _OperatorAPI_DeletePipeline_Handler,
+		},
+		{
+			MethodName: "DeleteTrunk",
+			Handler:    _OperatorAPI_DeleteTrunk_Handler,
 		},
 		{
 			MethodName: "ListTrunks",

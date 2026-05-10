@@ -413,6 +413,7 @@ message PipelineStep {
   GotoStep     goto      = 19;
   RecordStep   record    = 20;
   SubPipelineStep sub_pipeline = 21;
+  TransferStep transfer  = 22;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -774,6 +775,49 @@ message RecordStep {
 // parse time.
 message GotoStep {
   string label = 1;
+}
+
+// TransferStep — hand the caller off to another destination via
+// REFER (RFC 3515). After the REFER is accepted (202 from the
+// recipient), control of the call moves out of this pipeline —
+// typically the flow ends with a HangupStep right after, since the
+// caller's UA is now talking to the new target.
+//
+// Modes:
+//   - MODE_BLIND: REFER with bare Refer-To. Recipient drops the
+//     existing dialog and INVITEs the target. Default.
+//   - MODE_ATTENDED: REFER with Refer-To + Replaces. The transfer
+//     replaces an existing peer leg the recipient already has up
+//     (typical "operator briefly talked to colleague before
+//     transferring caller in" scenario). Requires
+//     peer_internal_call_id from a prior DialStep's
+//     LastDialResult.
+//
+// target_uri supports `${...}` substitution against the caller's
+// scope (so flow can build dynamic targets from CRM lookups via
+// HTTPCallback → SetCustomFieldStep → TransferStep).
+//
+// Outcome lands on CallState.LastTransferResult — the step layer
+// surfaces sip_status + accepted flag for downstream BranchStep
+// (e.g. "if blind transfer rejected, fall back to voicemail").
+message TransferStep {
+  string target_uri = 1;
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_BLIND       = 1;
+    MODE_ATTENDED    = 2;
+  }
+  Mode mode = 2;
+  // Peer leg's internal_call_id for MODE_ATTENDED — typically
+  // taken from CallState.LastDialResult.InternalCallID (a prior
+  // DialStep that established the consult call). Ignored for
+  // MODE_BLIND.
+  string peer_internal_call_id = 3;
+  // Optional CallState.CustomFields key for the resulting SIP
+  // status — mirror of HTTPCallbackStep.response_field. Empty =
+  // status only lands on LastTransferResult, not in CDR's
+  // custom_fields.
+  string result_field = 4;
 }
 
 // SubPipelineStep — call into a named pipeline as a reusable

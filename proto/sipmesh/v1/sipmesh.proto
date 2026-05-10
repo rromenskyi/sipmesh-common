@@ -771,6 +771,74 @@ service ProxyControl {
   // no external dial — so it's cheap and read-only. Returns
   // NotFound when trunk_id doesn't resolve in the loaded registry.
   rpc DescribeTrunk (DescribeTrunkRequest) returns (DescribeTrunkResponse);
+
+  // TransferCall asks the proxy to send a REFER (RFC 3515) to one
+  // of the legs of an active call, asking that leg to redirect to
+  // a new target. Used by flow.TransferStep so a pipeline can hand
+  // a caller off to another extension / IVR menu / external number
+  // without staying on the line.
+  //
+  // Synchronous up to "REFER accepted (202)" — the proxy waits for
+  // the recipient's 2xx-class response to the REFER request and
+  // returns. The actual transfer progress arrives via NOTIFY
+  // events asynchronously and lands on the call's CallEvents
+  // stream (status_line carries "SIP/2.0 100 Trying" → "200 OK"
+  // → terminal). Caller's flow can subscribe / branch on those if
+  // operator wants tight transfer-status logic.
+  //
+  // Returns NotFound when internal_call_id doesn't resolve to a
+  // live dialog on this proxy replica. FailedPrecondition when
+  // the dialog exists but the leg can't be referred (e.g. early
+  // dialog before 2xx final response).
+  rpc TransferCall (TransferCallRequest) returns (TransferCallResponse);
+}
+
+// TransferCall — flow-initiated REFER on an existing call leg.
+// "Mode" + "target_uri" decide what kind of transfer (blind vs
+// attended-with-replaces) and where the recipient should dial.
+message TransferCallRequest {
+  // The call's internal_call_id (assigned by the proxy when the
+  // call was accepted). Must resolve to a live dialog on this
+  // replica — proxies are sticky-by-source-IP so this is
+  // typically the same replica that handled the original INVITE.
+  string internal_call_id = 1;
+
+  // Refer-To URI. RFC 3515 §2.1 — the target the REFER recipient
+  // should INVITE. SIPS / SIP URI; tel: also works on most UAs.
+  // Examples: "sip:sales@example.com", "tel:+15555550100".
+  string target_uri = 2;
+
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    // Blind transfer — REFER carries Refer-To with no Replaces.
+    // Recipient hangs up the existing dialog (or the proxy bridges
+    // it down) before establishing the new one. Default.
+    MODE_BLIND = 1;
+    // Attended transfer — REFER carries Refer-To with a Replaces
+    // header pointing at an existing peer dialog the recipient
+    // already has up. Caller establishes the new dialog with the
+    // peer + tears down the old one atomically. Requires
+    // peer_internal_call_id to be set.
+    MODE_ATTENDED = 2;
+  }
+  Mode mode = 3;
+
+  // Peer leg's internal_call_id for MODE_ATTENDED — the dialog
+  // whose Replaces tuple lands in the REFER. Ignored for blind.
+  string peer_internal_call_id = 4;
+}
+
+message TransferCallResponse {
+  // Final SIP status the REFER got (typically 202 Accepted on
+  // success; 4xx/5xx if the recipient rejected).
+  uint32 sip_status = 1;
+  // Reason phrase that came with sip_status. Empty when sip_status
+  // is zero (transport error before any response arrived).
+  string sip_reason = 2;
+  // True when REFER was accepted (sip_status in 200..299). The
+  // actual transfer outcome arrives later via NOTIFY events on
+  // the call's CallEvents stream.
+  bool accepted = 3;
 }
 
 message DescribeTrunkRequest {

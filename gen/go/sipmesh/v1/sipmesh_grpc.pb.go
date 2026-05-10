@@ -1536,6 +1536,7 @@ const (
 	ProxyControl_GetCPSStatus_FullMethodName       = "/sipmesh.v1.ProxyControl/GetCPSStatus"
 	ProxyControl_GetClientEndpoints_FullMethodName = "/sipmesh.v1.ProxyControl/GetClientEndpoints"
 	ProxyControl_DescribeTrunk_FullMethodName      = "/sipmesh.v1.ProxyControl/DescribeTrunk"
+	ProxyControl_TransferCall_FullMethodName       = "/sipmesh.v1.ProxyControl/TransferCall"
 )
 
 // ProxyControlClient is the client API for ProxyControl service.
@@ -1580,6 +1581,25 @@ type ProxyControlClient interface {
 	// no external dial — so it's cheap and read-only. Returns
 	// NotFound when trunk_id doesn't resolve in the loaded registry.
 	DescribeTrunk(ctx context.Context, in *DescribeTrunkRequest, opts ...grpc.CallOption) (*DescribeTrunkResponse, error)
+	// TransferCall asks the proxy to send a REFER (RFC 3515) to one
+	// of the legs of an active call, asking that leg to redirect to
+	// a new target. Used by flow.TransferStep so a pipeline can hand
+	// a caller off to another extension / IVR menu / external number
+	// without staying on the line.
+	//
+	// Synchronous up to "REFER accepted (202)" — the proxy waits for
+	// the recipient's 2xx-class response to the REFER request and
+	// returns. The actual transfer progress arrives via NOTIFY
+	// events asynchronously and lands on the call's CallEvents
+	// stream (status_line carries "SIP/2.0 100 Trying" → "200 OK"
+	// → terminal). Caller's flow can subscribe / branch on those if
+	// operator wants tight transfer-status logic.
+	//
+	// Returns NotFound when internal_call_id doesn't resolve to a
+	// live dialog on this proxy replica. FailedPrecondition when
+	// the dialog exists but the leg can't be referred (e.g. early
+	// dialog before 2xx final response).
+	TransferCall(ctx context.Context, in *TransferCallRequest, opts ...grpc.CallOption) (*TransferCallResponse, error)
 }
 
 type proxyControlClient struct {
@@ -1630,6 +1650,16 @@ func (c *proxyControlClient) DescribeTrunk(ctx context.Context, in *DescribeTrun
 	return out, nil
 }
 
+func (c *proxyControlClient) TransferCall(ctx context.Context, in *TransferCallRequest, opts ...grpc.CallOption) (*TransferCallResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TransferCallResponse)
+	err := c.cc.Invoke(ctx, ProxyControl_TransferCall_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProxyControlServer is the server API for ProxyControl service.
 // All implementations must embed UnimplementedProxyControlServer
 // for forward compatibility.
@@ -1672,6 +1702,25 @@ type ProxyControlServer interface {
 	// no external dial — so it's cheap and read-only. Returns
 	// NotFound when trunk_id doesn't resolve in the loaded registry.
 	DescribeTrunk(context.Context, *DescribeTrunkRequest) (*DescribeTrunkResponse, error)
+	// TransferCall asks the proxy to send a REFER (RFC 3515) to one
+	// of the legs of an active call, asking that leg to redirect to
+	// a new target. Used by flow.TransferStep so a pipeline can hand
+	// a caller off to another extension / IVR menu / external number
+	// without staying on the line.
+	//
+	// Synchronous up to "REFER accepted (202)" — the proxy waits for
+	// the recipient's 2xx-class response to the REFER request and
+	// returns. The actual transfer progress arrives via NOTIFY
+	// events asynchronously and lands on the call's CallEvents
+	// stream (status_line carries "SIP/2.0 100 Trying" → "200 OK"
+	// → terminal). Caller's flow can subscribe / branch on those if
+	// operator wants tight transfer-status logic.
+	//
+	// Returns NotFound when internal_call_id doesn't resolve to a
+	// live dialog on this proxy replica. FailedPrecondition when
+	// the dialog exists but the leg can't be referred (e.g. early
+	// dialog before 2xx final response).
+	TransferCall(context.Context, *TransferCallRequest) (*TransferCallResponse, error)
 	mustEmbedUnimplementedProxyControlServer()
 }
 
@@ -1693,6 +1742,9 @@ func (UnimplementedProxyControlServer) GetClientEndpoints(context.Context, *GetC
 }
 func (UnimplementedProxyControlServer) DescribeTrunk(context.Context, *DescribeTrunkRequest) (*DescribeTrunkResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DescribeTrunk not implemented")
+}
+func (UnimplementedProxyControlServer) TransferCall(context.Context, *TransferCallRequest) (*TransferCallResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TransferCall not implemented")
 }
 func (UnimplementedProxyControlServer) mustEmbedUnimplementedProxyControlServer() {}
 func (UnimplementedProxyControlServer) testEmbeddedByValue()                      {}
@@ -1787,6 +1839,24 @@ func _ProxyControl_DescribeTrunk_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyControl_TransferCall_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransferCallRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyControlServer).TransferCall(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyControl_TransferCall_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyControlServer).TransferCall(ctx, req.(*TransferCallRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProxyControl_ServiceDesc is the grpc.ServiceDesc for ProxyControl service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1809,6 +1879,10 @@ var ProxyControl_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DescribeTrunk",
 			Handler:    _ProxyControl_DescribeTrunk_Handler,
+		},
+		{
+			MethodName: "TransferCall",
+			Handler:    _ProxyControl_TransferCall_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

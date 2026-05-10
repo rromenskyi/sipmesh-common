@@ -31,13 +31,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Scheduler_AllocateCall_FullMethodName      = "/sipmesh.v1.Scheduler/AllocateCall"
-	Scheduler_ReleaseCall_FullMethodName       = "/sipmesh.v1.Scheduler/ReleaseCall"
-	Scheduler_SetCallRemote_FullMethodName     = "/sipmesh.v1.Scheduler/SetCallRemote"
-	Scheduler_PublishCallSignal_FullMethodName = "/sipmesh.v1.Scheduler/PublishCallSignal"
-	Scheduler_BridgeCalls_FullMethodName       = "/sipmesh.v1.Scheduler/BridgeCalls"
-	Scheduler_SetCallHold_FullMethodName       = "/sipmesh.v1.Scheduler/SetCallHold"
-	Scheduler_SwitchCallCodec_FullMethodName   = "/sipmesh.v1.Scheduler/SwitchCallCodec"
+	Scheduler_AllocateCall_FullMethodName       = "/sipmesh.v1.Scheduler/AllocateCall"
+	Scheduler_ReleaseCall_FullMethodName        = "/sipmesh.v1.Scheduler/ReleaseCall"
+	Scheduler_SetCallRemote_FullMethodName      = "/sipmesh.v1.Scheduler/SetCallRemote"
+	Scheduler_PublishCallSignal_FullMethodName  = "/sipmesh.v1.Scheduler/PublishCallSignal"
+	Scheduler_BridgeCalls_FullMethodName        = "/sipmesh.v1.Scheduler/BridgeCalls"
+	Scheduler_SetCallHold_FullMethodName        = "/sipmesh.v1.Scheduler/SetCallHold"
+	Scheduler_SetCallCustomField_FullMethodName = "/sipmesh.v1.Scheduler/SetCallCustomField"
+	Scheduler_SwitchCallCodec_FullMethodName    = "/sipmesh.v1.Scheduler/SwitchCallCodec"
 )
 
 // SchedulerClient is the client API for Scheduler service.
@@ -89,6 +90,21 @@ type SchedulerClient interface {
 	// no bridge peer (solo AI/answering-machine call) the call is a
 	// no-op — flow continues uninterrupted.
 	SetCallHold(ctx context.Context, in *SetCallHoldRequest, opts ...grpc.CallOption) (*SetCallHoldResponse, error)
+	// SetCallCustomField writes a per-call CustomFields entry on the
+	// edge runner that owns the call. Frontend uses this to drive
+	// queue matching: caller's pipeline blocks on a Branch /
+	// ConverseStep.InterruptOnCustomField predicate watching for the
+	// field; frontend's matching loop sets it when a free operator is
+	// matched (e.g. `bridge_partner=<op_call_id>`), pipeline unblocks
+	// and bridges. Scheduler routes to the edge that holds the call;
+	// returns NotFound when internal_call_id doesn't resolve.
+	//
+	// Idempotent: same key/value lands once; repeated writes are safe
+	// (the runner's CustomFields is a plain map, last-write-wins).
+	// Engine doesn't validate key/value semantics — operator and
+	// frontend agree on the keys (bridge_partner, problem_summary,
+	// skill_needed, etc).
+	SetCallCustomField(ctx context.Context, in *SetCallCustomFieldRequest, opts ...grpc.CallOption) (*SetCallCustomFieldResponse, error)
 	// SwitchCallCodec hot-swaps the call leg's wire codec per a
 	// re-INVITE that flipped to a different payload type. The edge
 	// runner atomically updates Codec / PayloadType / bytesPerFrame,
@@ -167,6 +183,16 @@ func (c *schedulerClient) SetCallHold(ctx context.Context, in *SetCallHoldReques
 	return out, nil
 }
 
+func (c *schedulerClient) SetCallCustomField(ctx context.Context, in *SetCallCustomFieldRequest, opts ...grpc.CallOption) (*SetCallCustomFieldResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetCallCustomFieldResponse)
+	err := c.cc.Invoke(ctx, Scheduler_SetCallCustomField_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *schedulerClient) SwitchCallCodec(ctx context.Context, in *SwitchCallCodecRequest, opts ...grpc.CallOption) (*SwitchCallCodecResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SwitchCallCodecResponse)
@@ -226,6 +252,21 @@ type SchedulerServer interface {
 	// no bridge peer (solo AI/answering-machine call) the call is a
 	// no-op — flow continues uninterrupted.
 	SetCallHold(context.Context, *SetCallHoldRequest) (*SetCallHoldResponse, error)
+	// SetCallCustomField writes a per-call CustomFields entry on the
+	// edge runner that owns the call. Frontend uses this to drive
+	// queue matching: caller's pipeline blocks on a Branch /
+	// ConverseStep.InterruptOnCustomField predicate watching for the
+	// field; frontend's matching loop sets it when a free operator is
+	// matched (e.g. `bridge_partner=<op_call_id>`), pipeline unblocks
+	// and bridges. Scheduler routes to the edge that holds the call;
+	// returns NotFound when internal_call_id doesn't resolve.
+	//
+	// Idempotent: same key/value lands once; repeated writes are safe
+	// (the runner's CustomFields is a plain map, last-write-wins).
+	// Engine doesn't validate key/value semantics — operator and
+	// frontend agree on the keys (bridge_partner, problem_summary,
+	// skill_needed, etc).
+	SetCallCustomField(context.Context, *SetCallCustomFieldRequest) (*SetCallCustomFieldResponse, error)
 	// SwitchCallCodec hot-swaps the call leg's wire codec per a
 	// re-INVITE that flipped to a different payload type. The edge
 	// runner atomically updates Codec / PayloadType / bytesPerFrame,
@@ -261,6 +302,9 @@ func (UnimplementedSchedulerServer) BridgeCalls(context.Context, *BridgeCallsReq
 }
 func (UnimplementedSchedulerServer) SetCallHold(context.Context, *SetCallHoldRequest) (*SetCallHoldResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetCallHold not implemented")
+}
+func (UnimplementedSchedulerServer) SetCallCustomField(context.Context, *SetCallCustomFieldRequest) (*SetCallCustomFieldResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetCallCustomField not implemented")
 }
 func (UnimplementedSchedulerServer) SwitchCallCodec(context.Context, *SwitchCallCodecRequest) (*SwitchCallCodecResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SwitchCallCodec not implemented")
@@ -394,6 +438,24 @@ func _Scheduler_SetCallHold_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Scheduler_SetCallCustomField_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetCallCustomFieldRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchedulerServer).SetCallCustomField(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Scheduler_SetCallCustomField_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchedulerServer).SetCallCustomField(ctx, req.(*SetCallCustomFieldRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Scheduler_SwitchCallCodec_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SwitchCallCodecRequest)
 	if err := dec(in); err != nil {
@@ -444,6 +506,10 @@ var Scheduler_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Scheduler_SetCallHold_Handler,
 		},
 		{
+			MethodName: "SetCallCustomField",
+			Handler:    _Scheduler_SetCallCustomField_Handler,
+		},
+		{
 			MethodName: "SwitchCallCodec",
 			Handler:    _Scheduler_SwitchCallCodec_Handler,
 		},
@@ -453,13 +519,14 @@ var Scheduler_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Edge_StartCall_FullMethodName       = "/sipmesh.v1.Edge/StartCall"
-	Edge_CancelCall_FullMethodName      = "/sipmesh.v1.Edge/CancelCall"
-	Edge_SetRemote_FullMethodName       = "/sipmesh.v1.Edge/SetRemote"
-	Edge_TapCall_FullMethodName         = "/sipmesh.v1.Edge/TapCall"
-	Edge_BridgeCalls_FullMethodName     = "/sipmesh.v1.Edge/BridgeCalls"
-	Edge_SetCallHold_FullMethodName     = "/sipmesh.v1.Edge/SetCallHold"
-	Edge_SwitchCallCodec_FullMethodName = "/sipmesh.v1.Edge/SwitchCallCodec"
+	Edge_StartCall_FullMethodName          = "/sipmesh.v1.Edge/StartCall"
+	Edge_CancelCall_FullMethodName         = "/sipmesh.v1.Edge/CancelCall"
+	Edge_SetRemote_FullMethodName          = "/sipmesh.v1.Edge/SetRemote"
+	Edge_TapCall_FullMethodName            = "/sipmesh.v1.Edge/TapCall"
+	Edge_BridgeCalls_FullMethodName        = "/sipmesh.v1.Edge/BridgeCalls"
+	Edge_SetCallHold_FullMethodName        = "/sipmesh.v1.Edge/SetCallHold"
+	Edge_SwitchCallCodec_FullMethodName    = "/sipmesh.v1.Edge/SwitchCallCodec"
+	Edge_SetCallCustomField_FullMethodName = "/sipmesh.v1.Edge/SetCallCustomField"
 )
 
 // EdgeClient is the client API for Edge service.
@@ -503,6 +570,13 @@ type EdgeClient interface {
 	// SwitchCallCodec atomically swaps the runner's wire codec.
 	// See Scheduler.SwitchCallCodec for semantics.
 	SwitchCallCodec(ctx context.Context, in *EdgeSwitchCallCodecRequest, opts ...grpc.CallOption) (*EdgeSwitchCallCodecResponse, error)
+	// SetCallCustomField writes a per-call CustomFields entry on the
+	// runner that owns the call on THIS edge. Internal counterpart of
+	// Scheduler.SetCallCustomField — meshctl resolves which edge holds
+	// the call and forwards. Frontend-driven queue matching consumes
+	// this (e.g. set bridge_partner=<op_call_id> to unblock a queued
+	// caller's pipeline). Unknown call id → NotFound.
+	SetCallCustomField(ctx context.Context, in *EdgeSetCallCustomFieldRequest, opts ...grpc.CallOption) (*EdgeSetCallCustomFieldResponse, error)
 }
 
 type edgeClient struct {
@@ -592,6 +666,16 @@ func (c *edgeClient) SwitchCallCodec(ctx context.Context, in *EdgeSwitchCallCode
 	return out, nil
 }
 
+func (c *edgeClient) SetCallCustomField(ctx context.Context, in *EdgeSetCallCustomFieldRequest, opts ...grpc.CallOption) (*EdgeSetCallCustomFieldResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EdgeSetCallCustomFieldResponse)
+	err := c.cc.Invoke(ctx, Edge_SetCallCustomField_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EdgeServer is the server API for Edge service.
 // All implementations must embed UnimplementedEdgeServer
 // for forward compatibility.
@@ -633,6 +717,13 @@ type EdgeServer interface {
 	// SwitchCallCodec atomically swaps the runner's wire codec.
 	// See Scheduler.SwitchCallCodec for semantics.
 	SwitchCallCodec(context.Context, *EdgeSwitchCallCodecRequest) (*EdgeSwitchCallCodecResponse, error)
+	// SetCallCustomField writes a per-call CustomFields entry on the
+	// runner that owns the call on THIS edge. Internal counterpart of
+	// Scheduler.SetCallCustomField — meshctl resolves which edge holds
+	// the call and forwards. Frontend-driven queue matching consumes
+	// this (e.g. set bridge_partner=<op_call_id> to unblock a queued
+	// caller's pipeline). Unknown call id → NotFound.
+	SetCallCustomField(context.Context, *EdgeSetCallCustomFieldRequest) (*EdgeSetCallCustomFieldResponse, error)
 	mustEmbedUnimplementedEdgeServer()
 }
 
@@ -663,6 +754,9 @@ func (UnimplementedEdgeServer) SetCallHold(context.Context, *EdgeSetCallHoldRequ
 }
 func (UnimplementedEdgeServer) SwitchCallCodec(context.Context, *EdgeSwitchCallCodecRequest) (*EdgeSwitchCallCodecResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SwitchCallCodec not implemented")
+}
+func (UnimplementedEdgeServer) SetCallCustomField(context.Context, *EdgeSetCallCustomFieldRequest) (*EdgeSetCallCustomFieldResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetCallCustomField not implemented")
 }
 func (UnimplementedEdgeServer) mustEmbedUnimplementedEdgeServer() {}
 func (UnimplementedEdgeServer) testEmbeddedByValue()              {}
@@ -804,6 +898,24 @@ func _Edge_SwitchCallCodec_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Edge_SetCallCustomField_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EdgeSetCallCustomFieldRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EdgeServer).SetCallCustomField(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Edge_SetCallCustomField_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EdgeServer).SetCallCustomField(ctx, req.(*EdgeSetCallCustomFieldRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Edge_ServiceDesc is the grpc.ServiceDesc for Edge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -834,6 +946,10 @@ var Edge_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SwitchCallCodec",
 			Handler:    _Edge_SwitchCallCodec_Handler,
+		},
+		{
+			MethodName: "SetCallCustomField",
+			Handler:    _Edge_SetCallCustomField_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

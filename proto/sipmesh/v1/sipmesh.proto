@@ -62,6 +62,21 @@ service Scheduler {
   // no bridge peer (solo AI/answering-machine call) the call is a
   // no-op — flow continues uninterrupted.
   rpc SetCallHold (SetCallHoldRequest) returns (SetCallHoldResponse);
+  // SetCallCustomField writes a per-call CustomFields entry on the
+  // edge runner that owns the call. Frontend uses this to drive
+  // queue matching: caller's pipeline blocks on a Branch /
+  // ConverseStep.InterruptOnCustomField predicate watching for the
+  // field; frontend's matching loop sets it when a free operator is
+  // matched (e.g. `bridge_partner=<op_call_id>`), pipeline unblocks
+  // and bridges. Scheduler routes to the edge that holds the call;
+  // returns NotFound when internal_call_id doesn't resolve.
+  //
+  // Idempotent: same key/value lands once; repeated writes are safe
+  // (the runner's CustomFields is a plain map, last-write-wins).
+  // Engine doesn't validate key/value semantics — operator and
+  // frontend agree on the keys (bridge_partner, problem_summary,
+  // skill_needed, etc).
+  rpc SetCallCustomField (SetCallCustomFieldRequest) returns (SetCallCustomFieldResponse);
   // SwitchCallCodec hot-swaps the call leg's wire codec per a
   // re-INVITE that flipped to a different payload type. The edge
   // runner atomically updates Codec / PayloadType / bytesPerFrame,
@@ -261,6 +276,18 @@ message SetCallHoldRequest {
 }
 message SetCallHoldResponse {}
 
+message SetCallCustomFieldRequest {
+  string internal_call_id = 1;
+  // Key — operator/frontend convention; engine doesn't validate.
+  // Examples: "bridge_partner", "problem_summary",
+  // "skill_needed", "callback_request".
+  string key   = 2;
+  // Value — arbitrary string. Empty value is allowed (a way to
+  // "clear" a key downstream BranchStep predicates branch on).
+  string value = 3;
+}
+message SetCallCustomFieldResponse {}
+
 message SwitchCallCodecRequest {
   string internal_call_id = 1;
   string codec            = 2;  // PCMU | PCMA | G722 | G729
@@ -306,6 +333,13 @@ service Edge {
   // SwitchCallCodec atomically swaps the runner's wire codec.
   // See Scheduler.SwitchCallCodec for semantics.
   rpc SwitchCallCodec (EdgeSwitchCallCodecRequest) returns (EdgeSwitchCallCodecResponse);
+  // SetCallCustomField writes a per-call CustomFields entry on the
+  // runner that owns the call on THIS edge. Internal counterpart of
+  // Scheduler.SetCallCustomField — meshctl resolves which edge holds
+  // the call and forwards. Frontend-driven queue matching consumes
+  // this (e.g. set bridge_partner=<op_call_id> to unblock a queued
+  // caller's pipeline). Unknown call id → NotFound.
+  rpc SetCallCustomField (EdgeSetCallCustomFieldRequest) returns (EdgeSetCallCustomFieldResponse);
 }
 
 enum CallFlow {
@@ -416,6 +450,13 @@ message EdgeSwitchCallCodecRequest {
   uint32 payload_type     = 3;
 }
 message EdgeSwitchCallCodecResponse {}
+
+message EdgeSetCallCustomFieldRequest {
+  string internal_call_id = 1;
+  string key              = 2;
+  string value            = 3;
+}
+message EdgeSetCallCustomFieldResponse {}
 
 enum TapDirection {
   TAP_DIRECTION_UNSPECIFIED = 0;

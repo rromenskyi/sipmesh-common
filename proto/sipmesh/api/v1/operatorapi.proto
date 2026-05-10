@@ -406,6 +406,7 @@ message PipelineStep {
   UnholdStep   unhold   = 12;
   DTMFCollectStep dtmf_collect = 13;
   ReadyForBridgeStep ready_for_bridge = 14;
+  PlayFileStep play_file = 15;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -553,6 +554,28 @@ message ReadyForBridgeStep {}
 // shape — this proto field exposes it through the typed API.
 message PauseStep {
   uint32 ms = 1;
+}
+
+// PlayFileStep — play a pre-recorded audio file (WAV) to the
+// caller. Used for human-recorded greetings / hold music / sting
+// effects where TTS is unprofessional or wrong (legal disclaimers,
+// branding). Pairs with SayStep (TTS) and ConverseStep
+// (interactive TTS) — same audio output channel, different source.
+//
+// `path` is interpreted relative to the edge's WAV root directory
+// (chart-mounted hostPath / ConfigMap volume; operator-side asset
+// management). The edge resolves the path at step-execution time
+// and reads the WAV file into memory once per step run; small
+// files (<10 MB) are cheap to stream. Codec adaptation: if the
+// WAV's sample rate or encoding differs from the call's negotiated
+// codec, the edge transcodes on the fly via the existing audio
+// pipeline (PCMU/PCMA/G.722 supported). Empty path = no-op (step
+// is skipped, pipeline continues).
+message PlayFileStep {
+  // Path relative to the edge WAV root (chart's
+  // `WAV_ROOT_DIR` env, default `/etc/sipmesh/wav/`). Examples:
+  // "greetings/welcome.wav", "hold/jazz.wav".
+  string path = 1;
 }
 
 // ============================================================

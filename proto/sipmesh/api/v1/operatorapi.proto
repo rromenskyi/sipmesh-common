@@ -224,6 +224,52 @@ message Trunk {
   // / ForwardRoute) is applied first; this stacks AFTER it. Maps to
   // internal/trunkmgr Trunk.OutboundDialedRewrite.
   DialedRewrite outbound_dialed_rewrite = 57;
+
+  // Inbound caller filters — block / allow rules evaluated by the
+  // sip-proxy listener before sending 100 Trying. Match the
+  // caller's URI user-part (the bare E.164 / extension number)
+  // against each filter; on a match the proxy emits the configured
+  // SIP response (default 603 Decline) and tears down the
+  // transaction with no media reservation, no CDR row.
+  //
+  // Allowlist semantics: when ANY POLICY_ALLOW filter is present
+  // on a trunk, default is deny — only callers matching an
+  // allow-policy filter pass through. Pure block-policy filters
+  // (no allow) leave the default as accept. Mixed: block rules
+  // evaluate first (explicit deny beats implicit allow).
+  repeated InboundFilter inbound_filters = 58;
+}
+
+// InboundFilter matches a caller URI's user-part and applies a
+// policy (block / allow) before the proxy sends 100 Trying. Used
+// for per-trunk operator-managed deny lists (spammer numbers,
+// obvious scanner extensions like 100/1001) and allowlists
+// (campaign-callback-only deployments).
+message InboundFilter {
+  enum Policy {
+    POLICY_UNSPECIFIED = 0;
+    POLICY_BLOCK       = 1;  // matched callers rejected
+    POLICY_ALLOW       = 2;  // matched callers pass; default-deny when ANY allow present
+  }
+  Policy policy = 1;
+
+  enum MatchKind {
+    MATCH_UNSPECIFIED = 0;
+    MATCH_E164_EXACT  = 1;  // exact match on bare E.164 / extension
+    MATCH_E164_PREFIX = 2;  // prefix match (e.g. "+1900" blocks all NANP premium-rate)
+    MATCH_REGEX       = 3;  // RE2 against the caller URI's user-part
+  }
+  MatchKind match_kind = 2;
+  string    match_value = 3;
+
+  // SIP response status when this filter rejects. 0 = engine
+  // default 603 Decline. Engine validates as 4xx / 5xx / 6xx;
+  // anything else degrades silently to 603 with a warning log.
+  uint32 reject_code = 4;
+
+  // Operator-facing audit note. Surfaced in SIP-trace events +
+  // structured filter-match log line. Free-form, <= 256 bytes.
+  string reason = 5;
 }
 
 message TrunkTarget {

@@ -407,6 +407,7 @@ message PipelineStep {
   DTMFCollectStep dtmf_collect = 13;
   ReadyForBridgeStep ready_for_bridge = 14;
   PlayFileStep play_file = 15;
+  AnswerStep   answer    = 16;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -555,6 +556,24 @@ message ReadyForBridgeStep {}
 message PauseStep {
   uint32 ms = 1;
 }
+
+// AnswerStep — explicit "send 200 OK now" point in the pipeline.
+//
+// Today (and for the dev pilot) sip-proxy sends 200 OK
+// immediately on inbound INVITE, before the pipeline starts —
+// putting AnswerStep anywhere in the steps[] list is a no-op.
+//
+// Future-state (when proxy gains "deferred answer" mode keyed on
+// AnswerStep presence): if AnswerStep appears in the pipeline,
+// proxy holds the INVITE in early-media (180/183 with SDP) and
+// only sends 200 OK when the pipeline reaches the AnswerStep
+// position. That lets a flow play ringback / preroll
+// announcements WITHOUT charging the call (carriers bill from
+// 200 OK).
+//
+// Empty body — presence is the signal. Standalone or after a
+// PlayFileStep / SayStep ringback is the typical position.
+message AnswerStep {}
 
 // PlayFileStep — play a pre-recorded audio file (WAV) to the
 // caller. Used for human-recorded greetings / hold music / sting

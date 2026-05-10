@@ -1379,4 +1379,30 @@ message GetClientEndpointsResponse {
   // can negotiate alternatives without a proto bump if the
   // need arises. Empty = consumer assumes "sip".
   string sip_wss_subprotocol = 2;
+
+  // SipUdpAddr is the public-routable host:port of the SIP-UDP
+  // listener (RFC 3261). Frontend renders this for native UAs
+  // / SIP softphones the operator wants to point at this
+  // deployment from outside the cluster (LB external IP +
+  // SIP_LISTEN port). Empty = SIP-UDP not exposed externally.
+  // Sourced from sip-proxy's `SIP_CONTACT_HOST` + `SIP_LISTEN`
+  // env (chart `proxy.contactHost` + `proxy.config.sipListen`).
+  string sip_udp_addr = 3;
+
+  // SipTlsAddr is the public-routable host:port of the
+  // SIPS-over-TLS listener (RFC 5630). Same shape as
+  // SipUdpAddr; empty = SIPS not exposed. Sourced from
+  // sip-proxy's `SIP_CONTACT_HOST` + the TLS listener port
+  // (5061 by chart default; configurable via
+  // `proxy.config.sipTlsListen`).
+  string sip_tls_addr = 4;
+
+  // SipRealm is the SIP digest-auth realm advertised on this
+  // deployment — the value an inbound REGISTER receives in
+  // the WWW-Authenticate challenge. Frontend pre-fills this
+  // for browser softphone provisioning so the operator
+  // doesn't type it manually. Sourced from sip-proxy's
+  // `SIP_REALM` / `SIP_CONTACT_HOST` (defaults to contact
+  // host when realm isn't set explicitly).
+  string sip_realm = 5;
 }

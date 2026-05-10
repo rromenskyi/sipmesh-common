@@ -6321,8 +6321,31 @@ type GetClientEndpointsResponse struct {
 	// can negotiate alternatives without a proto bump if the
 	// need arises. Empty = consumer assumes "sip".
 	SipWssSubprotocol string `protobuf:"bytes,2,opt,name=sip_wss_subprotocol,json=sipWssSubprotocol,proto3" json:"sip_wss_subprotocol,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// SipUdpAddr is the public-routable host:port of the SIP-UDP
+	// listener (RFC 3261). Frontend renders this for native UAs
+	// / SIP softphones the operator wants to point at this
+	// deployment from outside the cluster (LB external IP +
+	// SIP_LISTEN port). Empty = SIP-UDP not exposed externally.
+	// Sourced from sip-proxy's `SIP_CONTACT_HOST` + `SIP_LISTEN`
+	// env (chart `proxy.contactHost` + `proxy.config.sipListen`).
+	SipUdpAddr string `protobuf:"bytes,3,opt,name=sip_udp_addr,json=sipUdpAddr,proto3" json:"sip_udp_addr,omitempty"`
+	// SipTlsAddr is the public-routable host:port of the
+	// SIPS-over-TLS listener (RFC 5630). Same shape as
+	// SipUdpAddr; empty = SIPS not exposed. Sourced from
+	// sip-proxy's `SIP_CONTACT_HOST` + the TLS listener port
+	// (5061 by chart default; configurable via
+	// `proxy.config.sipTlsListen`).
+	SipTlsAddr string `protobuf:"bytes,4,opt,name=sip_tls_addr,json=sipTlsAddr,proto3" json:"sip_tls_addr,omitempty"`
+	// SipRealm is the SIP digest-auth realm advertised on this
+	// deployment — the value an inbound REGISTER receives in
+	// the WWW-Authenticate challenge. Frontend pre-fills this
+	// for browser softphone provisioning so the operator
+	// doesn't type it manually. Sourced from sip-proxy's
+	// `SIP_REALM` / `SIP_CONTACT_HOST` (defaults to contact
+	// host when realm isn't set explicitly).
+	SipRealm      string `protobuf:"bytes,5,opt,name=sip_realm,json=sipRealm,proto3" json:"sip_realm,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetClientEndpointsResponse) Reset() {
@@ -6365,6 +6388,27 @@ func (x *GetClientEndpointsResponse) GetSipWssUrl() string {
 func (x *GetClientEndpointsResponse) GetSipWssSubprotocol() string {
 	if x != nil {
 		return x.SipWssSubprotocol
+	}
+	return ""
+}
+
+func (x *GetClientEndpointsResponse) GetSipUdpAddr() string {
+	if x != nil {
+		return x.SipUdpAddr
+	}
+	return ""
+}
+
+func (x *GetClientEndpointsResponse) GetSipTlsAddr() string {
+	if x != nil {
+		return x.SipTlsAddr
+	}
+	return ""
+}
+
+func (x *GetClientEndpointsResponse) GetSipRealm() string {
+	if x != nil {
+		return x.SipRealm
 	}
 	return ""
 }
@@ -6799,10 +6843,15 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x16SubscribeConfigRequest\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12.\n" +
 	"\x13resume_from_version\x18\x02 \x01(\x04R\x11resumeFromVersion\"\x1b\n" +
-	"\x19GetClientEndpointsRequest\"l\n" +
+	"\x19GetClientEndpointsRequest\"\xcd\x01\n" +
 	"\x1aGetClientEndpointsResponse\x12\x1e\n" +
 	"\vsip_wss_url\x18\x01 \x01(\tR\tsipWssUrl\x12.\n" +
-	"\x13sip_wss_subprotocol\x18\x02 \x01(\tR\x11sipWssSubprotocol*D\n" +
+	"\x13sip_wss_subprotocol\x18\x02 \x01(\tR\x11sipWssSubprotocol\x12 \n" +
+	"\fsip_udp_addr\x18\x03 \x01(\tR\n" +
+	"sipUdpAddr\x12 \n" +
+	"\fsip_tls_addr\x18\x04 \x01(\tR\n" +
+	"sipTlsAddr\x12\x1b\n" +
+	"\tsip_realm\x18\x05 \x01(\tR\bsipRealm*D\n" +
 	"\bHoldMode\x12\x11\n" +
 	"\rHOLD_MODE_OFF\x10\x00\x12\x12\n" +
 	"\x0eHOLD_MODE_MUTE\x10\x01\x12\x11\n" +

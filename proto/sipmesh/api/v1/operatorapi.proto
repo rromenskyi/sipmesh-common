@@ -521,6 +521,15 @@ message HoldStep {
     MODE_MUTE        = 2;  // silence; no playback
   }
   Mode mode = 1;
+  // Per-step MOH source override. Resolved against the edge's
+  // audio sink in priority order: configured S3 bucket key →
+  // local WAV root path → procedural fallback. Empty = use the
+  // edge's global MOH (chart's `edge.config.mohWAV` /
+  // operator's S3 default key) — same behaviour as before this
+  // field existed. Supports `${...}` substitution
+  // (`moh_path: "moh/by-language/${detected_language}.wav"`).
+  // Only meaningful when mode=MOH; ignored for MODE_MUTE.
+  string moh_path = 2;
 }
 
 // UnholdStep — release the hold engaged by a previous HoldStep.

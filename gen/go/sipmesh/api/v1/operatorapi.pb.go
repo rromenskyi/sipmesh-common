@@ -3079,8 +3079,17 @@ func (x *SetCustomFieldStep) GetValue() string {
 // you want MOH OUTSIDE of a Dial — e.g. while running an
 // HTTPCallback or DatabaseLookup.
 type HoldStep struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mode          HoldStep_Mode          `protobuf:"varint,1,opt,name=mode,proto3,enum=sipmesh.api.v1.HoldStep_Mode" json:"mode,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Mode  HoldStep_Mode          `protobuf:"varint,1,opt,name=mode,proto3,enum=sipmesh.api.v1.HoldStep_Mode" json:"mode,omitempty"`
+	// Per-step MOH source override. Resolved against the edge's
+	// audio sink in priority order: configured S3 bucket key →
+	// local WAV root path → procedural fallback. Empty = use the
+	// edge's global MOH (chart's `edge.config.mohWAV` /
+	// operator's S3 default key) — same behaviour as before this
+	// field existed. Supports `${...}` substitution
+	// (`moh_path: "moh/by-language/${detected_language}.wav"`).
+	// Only meaningful when mode=MOH; ignored for MODE_MUTE.
+	MohPath       string `protobuf:"bytes,2,opt,name=moh_path,json=mohPath,proto3" json:"moh_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3120,6 +3129,13 @@ func (x *HoldStep) GetMode() HoldStep_Mode {
 		return x.Mode
 	}
 	return HoldStep_MODE_UNSPECIFIED
+}
+
+func (x *HoldStep) GetMohPath() string {
+	if x != nil {
+		return x.MohPath
+	}
+	return ""
 }
 
 // UnholdStep — release the hold engaged by a previous HoldStep.
@@ -6279,9 +6295,10 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"terminator\"<\n" +
 	"\x12SetCustomFieldStep\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"x\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\x93\x01\n" +
 	"\bHoldStep\x121\n" +
-	"\x04mode\x18\x01 \x01(\x0e2\x1d.sipmesh.api.v1.HoldStep.ModeR\x04mode\"9\n" +
+	"\x04mode\x18\x01 \x01(\x0e2\x1d.sipmesh.api.v1.HoldStep.ModeR\x04mode\x12\x19\n" +
+	"\bmoh_path\x18\x02 \x01(\tR\amohPath\"9\n" +
 	"\x04Mode\x12\x14\n" +
 	"\x10MODE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bMODE_MOH\x10\x01\x12\r\n" +

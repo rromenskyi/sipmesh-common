@@ -2972,10 +2972,18 @@ func (*CallAnswered) Descriptor() ([]byte, []int) {
 }
 
 type CallRecordingDone struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Uri           string                 `protobuf:"bytes,1,opt,name=uri,proto3" json:"uri,omitempty"`
-	Bytes         uint64                 `protobuf:"varint,2,opt,name=bytes,proto3" json:"bytes,omitempty"`
-	DurationMs    uint32                 `protobuf:"varint,3,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Uri        string                 `protobuf:"bytes,1,opt,name=uri,proto3" json:"uri,omitempty"`
+	Bytes      uint64                 `protobuf:"varint,2,opt,name=bytes,proto3" json:"bytes,omitempty"`
+	DurationMs uint32                 `protobuf:"varint,3,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	// Sibling JSON sidecar with the per-turn dialogue log (caller
+	// STT + bot TTS-source). Same scheme as `uri` (file://
+	// local-only, s3:// when archive is wired). Empty when the
+	// call had no flow-driven transcript (no ConverseStep /
+	// ListenStep ran). CDR assembler folds this into
+	// CDR.transcript_uri so frontend renders subtitles next to the
+	// WAV without re-parsing CallTranscript events.
+	TranscriptUri string `protobuf:"bytes,4,opt,name=transcript_uri,json=transcriptUri,proto3" json:"transcript_uri,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3029,6 +3037,13 @@ func (x *CallRecordingDone) GetDurationMs() uint32 {
 		return x.DurationMs
 	}
 	return 0
+}
+
+func (x *CallRecordingDone) GetTranscriptUri() string {
+	if x != nil {
+		return x.TranscriptUri
+	}
+	return ""
 }
 
 type CallEnded struct {
@@ -6530,12 +6545,13 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\fDialogHangup\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\"\r\n" +
 	"\vCallStarted\"\x0e\n" +
-	"\fCallAnswered\"\\\n" +
+	"\fCallAnswered\"\x83\x01\n" +
 	"\x11CallRecordingDone\x12\x10\n" +
 	"\x03uri\x18\x01 \x01(\tR\x03uri\x12\x14\n" +
 	"\x05bytes\x18\x02 \x01(\x04R\x05bytes\x12\x1f\n" +
 	"\vduration_ms\x18\x03 \x01(\rR\n" +
-	"durationMs\"\xf4\x03\n" +
+	"durationMs\x12%\n" +
+	"\x0etranscript_uri\x18\x04 \x01(\tR\rtranscriptUri\"\xf4\x03\n" +
 	"\tCallEnded\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x1f\n" +
 	"\vduration_ms\x18\x02 \x01(\rR\n" +

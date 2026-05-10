@@ -577,7 +577,19 @@ message DialogHangup {
 
 message CallStarted       {}
 message CallAnswered      {}
-message CallRecordingDone { string uri = 1; uint64 bytes = 2; uint32 duration_ms = 3; }
+message CallRecordingDone {
+  string uri          = 1;
+  uint64 bytes        = 2;
+  uint32 duration_ms  = 3;
+  // Sibling JSON sidecar with the per-turn dialogue log (caller
+  // STT + bot TTS-source). Same scheme as `uri` (file://
+  // local-only, s3:// when archive is wired). Empty when the
+  // call had no flow-driven transcript (no ConverseStep /
+  // ListenStep ran). CDR assembler folds this into
+  // CDR.transcript_uri so frontend renders subtitles next to the
+  // WAV without re-parsing CallTranscript events.
+  string transcript_uri = 4;
+}
 message CallEnded {
   string reason      = 1;
   uint32 duration_ms = 2;

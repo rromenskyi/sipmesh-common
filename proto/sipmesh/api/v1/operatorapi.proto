@@ -408,6 +408,7 @@ message PipelineStep {
   ReadyForBridgeStep ready_for_bridge = 14;
   PlayFileStep play_file = 15;
   AnswerStep   answer    = 16;
+  HTTPCallbackStep http_callback = 17;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -595,6 +596,68 @@ message PlayFileStep {
   // `WAV_ROOT_DIR` env, default `/etc/sipmesh/wav/`). Examples:
   // "greetings/welcome.wav", "hold/jazz.wav".
   string path = 1;
+}
+
+// HTTPCallbackStep — call out to an external HTTP endpoint mid-pipeline
+// and (optionally) capture the response body into a CallState custom
+// field for downstream BranchStep / SetCustomFieldStep to consume.
+// Asterisk-AGI / FreeSWITCH curl_exec equivalent.
+//
+// Typical uses: CRM lookup by caller number, dynamic-routing decision
+// from operator backend, real-time fraud / blacklist check, posting
+// CDR fragments to webhooks during the call. Pair with a HoldStep
+// before + UnholdStep after when the callout is slow enough to
+// notice (>500ms) — caller hears MOH instead of dead air.
+//
+// Wire-time semantics:
+//   - `url` and `body_template` support engine variable substitution
+//     ("${caller}", "${last_dtmf}", "${transcript}", "${custom.foo}").
+//   - `timeout_ms` capped at 30000 (server-side validation rejects
+//     larger). Default 5000.
+//   - `response_field` non-empty: response body captured into
+//     CallState.CustomFields[response_field] (string, raw body —
+//     caller does any JSON parsing in a downstream Branch's
+//     `${custom.response_field}` predicate). Empty: response
+//     discarded.
+//   - `on_error`: CONTINUE = log + skip, FAIL = abort pipeline with
+//     error (default). HTTP status outside `expected_status` set is
+//     treated as an error.
+//   - `expected_status` empty: 200..299 considered success.
+message HTTPCallbackStep {
+  enum Method {
+    METHOD_UNSPECIFIED = 0;
+    METHOD_GET         = 1;
+    METHOD_POST        = 2;  // default when METHOD_UNSPECIFIED
+    METHOD_PUT         = 3;
+    METHOD_DELETE      = 4;
+    METHOD_PATCH       = 5;
+  }
+  enum OnError {
+    ON_ERROR_UNSPECIFIED = 0;
+    ON_ERROR_FAIL        = 1;  // default — abort pipeline on error
+    ON_ERROR_CONTINUE    = 2;  // log + skip, pipeline continues
+  }
+  // Target URL. Supports ${...} substitution. Required.
+  string url = 1;
+  Method method = 2;
+  // Custom request headers (e.g. Authorization, X-Request-ID).
+  // Values support ${...} substitution. Content-Type defaults to
+  // application/json when body_template is non-empty and the
+  // operator hasn't set it explicitly.
+  map<string, string> headers = 3;
+  // Request body. Supports ${...} substitution. Empty = no body.
+  string body_template = 4;
+  // Per-call timeout. Capped at 30000ms server-side. 0 = default
+  // (5000ms).
+  uint32 timeout_ms = 5;
+  // CallState.CustomFields key under which to store the response
+  // body. Empty = response discarded.
+  string response_field = 6;
+  OnError on_error = 7;
+  // HTTP status codes treated as success. Empty = 200..299.
+  // Operators set explicitly when the upstream returns 422 / 404
+  // as part of the contract.
+  repeated uint32 expected_status = 8;
 }
 
 // ============================================================

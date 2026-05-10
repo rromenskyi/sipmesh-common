@@ -414,6 +414,7 @@ message PipelineStep {
   RecordStep   record    = 20;
   SubPipelineStep sub_pipeline = 21;
   TransferStep transfer  = 22;
+  QueueStep    queue     = 23;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -450,6 +451,25 @@ message ConverseStep {
   uint32              endpoint_silence_ms              = 15;
   string              escape_digit                     = 16;
   bool                interrupt_on_dial_answer         = 17;
+  // interrupt_on_custom_field exits the converse loop when the
+  // named CustomFields entry is set (regex match against value).
+  // Mirrors interrupt_on_dial_answer's pattern but for any
+  // external trigger — typical use is queue-with-AI-entertainment
+  // where the frontend sets `bridge_partner=<op_call_id>` to
+  // unblock the wait while the AI is still chatting. Empty key
+  // disables (default).
+  ConverseStepInterruptOnCustomField interrupt_on_custom_field = 18;
+}
+
+// ConverseStepInterruptOnCustomField — one (key, value_pattern)
+// trigger that exits the converse loop. value_pattern is a Go
+// regexp; empty pattern matches any non-empty value (a way to say
+// "fire as soon as the field is set to anything"). Multiple triggers
+// would be a future extension; today one is enough for the
+// queue-with-AI scenario.
+message ConverseStepInterruptOnCustomField {
+  string key           = 1;
+  string value_pattern = 2;
 }
 
 message DialStep {
@@ -859,6 +879,57 @@ message SubPipelineStep {
   // caller's scope (so the caller can pass through its own
   // ${caller}, ${custom.foo}, etc).
   map<string, string> args = 2;
+}
+
+// QueueStep — convenience wrapper for "park caller, wait for
+// frontend to match an operator, bridge". Engine doesn't track
+// queue state — that lives in sipmesh-frontend's DB. This step is
+// pure choreography:
+//
+//   1. Emit `queued` CallEvent with queue_name + caller metadata
+//      (frontend's queue-monitor UI sees who's where).
+//   2. HoldStep MODE_MOH (caller hears the edge's MOH source).
+//   3. Block until CallState.CustomFields[bridge_partner_field] is
+//      set (frontend's matching loop pokes via
+//      Scheduler.SetCallCustomField when it has a free operator).
+//   4. UnholdStep + emit `dequeued` CallEvent.
+//   5. Caller's pipeline continues; typical next step is a
+//      BridgeStep against ${custom.<bridge_partner_field>}.
+//
+// On max_wait_ms timeout: emit `queue_timeout` CallEvent +
+// fall-through to on_timeout_steps (typically a SubPipelineStep
+// to a voicemail flow). Empty on_timeout_steps + timeout = pipeline
+// fails closed with a clear "queue timeout" error so the operator
+// notices.
+//
+// Substitution: queue_name supports ${...} so an AI ConverseStep
+// can choose the queue based on caller intent (e.g.
+// `queue_name: "support-${custom.skill_needed}"`).
+//
+// AI-entertainment composition: replace this step with
+// `ConverseStep { interrupt_on_custom_field: { key: bridge_partner_field } }`
+// — same wait semantics, but caller talks to AI while waiting.
+// QueueStep is the silent-MOH form; ConverseStep with that
+// interrupt is the conversational form. Both consume the same
+// frontend matching event; pipeline author picks the experience.
+message QueueStep {
+  // Logical queue name. Used in CallEvent metadata so
+  // frontend matching loop knows which queue to enqueue this
+  // caller into. Substitution supported.
+  string queue_name = 1;
+  // Hard wall-clock cap on the wait. 0 = no cap (wait
+  // indefinitely). Operator typically sets this paired with
+  // on_timeout_steps for a callback-offer fallback.
+  uint32 max_wait_ms = 2;
+  // CustomFields key the step blocks on. Empty = "bridge_partner"
+  // (default convention). Frontend writes this key via
+  // Scheduler.SetCallCustomField when it has a match — pipeline
+  // unblocks. After unblock, the caller's NEXT step typically is
+  // BridgeStep with peer_internal_call_id = ${custom.<this key>}.
+  string bridge_partner_field = 3;
+  // Steps to run on max_wait_ms timeout instead of failing
+  // closed. Typical use: voicemail / callback-offer SubPipeline.
+  repeated PipelineStep on_timeout_steps = 4;
 }
 
 // ============================================================

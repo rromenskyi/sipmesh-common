@@ -2769,7 +2769,23 @@ type Pipeline struct {
 	MaxCallDuration string `protobuf:"bytes,2,opt,name=max_call_duration,json=maxCallDuration,proto3" json:"max_call_duration,omitempty"`
 	// Per-step list. Discriminated union — exactly one of the inner
 	// step fields populated per entry.
-	Steps         []*PipelineStep `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
+	Steps []*PipelineStep `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
+	// Selects which ai-worker pool the edge routes Synthesize /
+	// Transcribe / Chat to for calls flowing through this pipeline.
+	// Empty = default pool (legacy single AI_WORKER_ADDR client).
+	// Operators wire `label → addr` map on the edge ConfigMap;
+	// unknown labels fall back to the default pool with a warn log
+	// (degrades gracefully rather than failing the call).
+	//
+	// Use cases:
+	//   - per-tenant pricing tiers: "premium-cloud" → Google Cloud
+	//     STT/TTS/Gemini ai-worker; "standard-local" → Vulkan +
+	//     Piper + qwen3.5:9b ai-worker; "free-demo" → CPU tiny model.
+	//   - per-language pools: route uk_UA pipelines to a pool with
+	//     pre-loaded Ukrainian voices, en_US to a different pool.
+	//   - A/B: shadow-route some pipelines to a new ai-worker build
+	//     without flipping the whole cluster.
+	AiWorkerLabel string `protobuf:"bytes,4,opt,name=ai_worker_label,json=aiWorkerLabel,proto3" json:"ai_worker_label,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2823,6 +2839,13 @@ func (x *Pipeline) GetSteps() []*PipelineStep {
 		return x.Steps
 	}
 	return nil
+}
+
+func (x *Pipeline) GetAiWorkerLabel() string {
+	if x != nil {
+		return x.AiWorkerLabel
+	}
+	return ""
 }
 
 type PipelineStep struct {
@@ -7295,11 +7318,12 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\bCallerID\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x12\n" +
 	"\x04user\x18\x02 \x01(\tR\x04user\x12\x12\n" +
-	"\x04host\x18\x03 \x01(\tR\x04host\"~\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\"\xa6\x01\n" +
 	"\bPipeline\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x11max_call_duration\x18\x02 \x01(\tR\x0fmaxCallDuration\x122\n" +
-	"\x05steps\x18\x03 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps\"\x8a\n" +
+	"\x05steps\x18\x03 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps\x12&\n" +
+	"\x0fai_worker_label\x18\x04 \x01(\tR\raiWorkerLabel\"\x8a\n" +
 	"\n" +
 	"\fPipelineStep\x12)\n" +
 	"\x03say\x18\x01 \x01(\v2\x17.sipmesh.api.v1.SayStepR\x03say\x122\n" +

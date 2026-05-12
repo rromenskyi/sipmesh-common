@@ -512,6 +512,22 @@ message Pipeline {
   // Per-step list. Discriminated union — exactly one of the inner
   // step fields populated per entry.
   repeated PipelineStep steps = 3;
+  // Selects which ai-worker pool the edge routes Synthesize /
+  // Transcribe / Chat to for calls flowing through this pipeline.
+  // Empty = default pool (legacy single AI_WORKER_ADDR client).
+  // Operators wire `label → addr` map on the edge ConfigMap;
+  // unknown labels fall back to the default pool with a warn log
+  // (degrades gracefully rather than failing the call).
+  //
+  // Use cases:
+  //  - per-tenant pricing tiers: "premium-cloud" → Google Cloud
+  //    STT/TTS/Gemini ai-worker; "standard-local" → Vulkan +
+  //    Piper + qwen3.5:9b ai-worker; "free-demo" → CPU tiny model.
+  //  - per-language pools: route uk_UA pipelines to a pool with
+  //    pre-loaded Ukrainian voices, en_US to a different pool.
+  //  - A/B: shadow-route some pipelines to a new ai-worker build
+  //    without flipping the whole cluster.
+  string ai_worker_label = 4;
 }
 
 message PipelineStep {

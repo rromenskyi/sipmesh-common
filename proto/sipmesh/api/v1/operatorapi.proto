@@ -79,115 +79,229 @@ message OperatorConfigResponse {
   OperatorConfig config = 1;
 }
 
-message ApplyOperatorConfigRequest {
-  OperatorConfig config = 1;
-  // Optimistic-concurrency token. Pass the version observed in the
-  // last GetOperatorConfigResponse. Server rejects with
-  // FAILED_PRECONDITION if the in-cluster version has moved on
-  // (someone else wrote between your read and your write). Pass 0
-  // to force-apply ignoring concurrency — useful for first-time
-  // bootstrap or operator-supervised override.
+// =============================================================
+// WriteConfig — THE write surface for the operator console
+// =============================================================
+//
+// One method covers every config mutation: upsert/delete pipeline,
+// upsert/delete trunk, replace route list. Future resource types
+// (users, AOR auth, ACL, AI-worker-pool, voicemail, etc.) extend
+// ConfigOp's oneof additively — never a new RPC method.
+//
+// Semantics:
+//
+//   1. Load live ConfigSet body, parse into in-memory bundle.
+//   2. Apply every ConfigOp in `ops` order into the bundle copy.
+//   3. Validate the FULL merged result (cross-refs included:
+//      route→trunk, route→pipeline, sub_pipeline refs, codec
+//      lists vs binary registry, etc).
+//   4. proto.Equal(before, after) → no_op=true, current version,
+//      no write.
+//   5. configstore.Apply(merged, parent_version):
+//        - parent_version mismatch → ABORTED + new_version in
+//          response so the BFF can refetch and retry
+//        - validation failed → INVALID_ARGUMENT + diagnostics
+//   6. The whole batch is atomic: either every op lands or
+//      nothing does.
+//
+// Dependency-tree safety: validation runs on the fully-merged
+// state, so a batch can include both `{ upsert_trunk: T,
+// replace_routes: [Route{trunk:T.id}] }` even though Route refers
+// to T which didn't exist before the batch — final state has T,
+// validation passes.
+//
+// OCC: parent_version is the version returned by the LAST read
+// (GetOperatorConfig or a previous WriteConfig). 0 is rejected
+// for routine writes; for first-time bootstrap on an empty
+// configstore, the dedicated `ImportConfig` method below skips
+// OCC explicitly.
+
+message WriteConfigRequest {
+  // Multi-tenant routing key. Empty in single-tenant deploys (the
+  // engine treats empty as the "default" group). Reserved as the
+  // first field so multi-tenant adoption is a populate-the-field
+  // change, not a wire-shape change.
+  string group = 1;
+
+  // Optimistic concurrency. Pass the version returned by the last
+  // read (GetOperatorConfig or a previous WriteConfig). The
+  // engine rejects writes whose parent_version doesn't match the
+  // current ConfigSet version with ABORTED — the BFF SDK refetches
+  // and retries up to a bounded number of times.
+  //
+  // 0 is rejected — use ImportConfig for first-time bootstrap.
   uint64 parent_version = 2;
-  // Free-form audit string ("alice via console", "ci-cd nightly",
-  // etc) recorded on the resulting OperatorConfig.applied_by.
-  string applied_by = 3;
-  // dry_run: validate everything but don't write. Returns the same
-  // diagnostics ApplyOperatorConfig would have surfaced. Frontend
-  // can light up red squiggles in the constructor without a real
-  // deploy.
+
+  // The batch. Every op is applied to the bundle copy in order;
+  // validation runs ONCE against the final merged state. An empty
+  // ops list returns no_op=true with the current version.
+  repeated ConfigOp ops = 3;
+
+  // Audit string ("alice via console", "ci-cd nightly", etc).
+  // Recorded on the resulting OperatorConfig.applied_by.
+  string applied_by = 4;
+
+  // Operator-readable why ("rotated zadarma password", "MVP0
+  // launch trunk set", etc). Stored alongside applied_by so
+  // future audit-log views can render context. Optional.
+  string change_note = 5;
+
+  // dry_run: run the full merge + validate pipeline, then return
+  // the would-be diff and any diagnostics WITHOUT writing. The
+  // current version stays unchanged; response.version echoes the
+  // current value so the caller can retry as a real write with
+  // the same parent_version.
+  bool dry_run = 6;
+}
+
+// ConfigOp is one mutation. Every supported resource type has its
+// own oneof variant. The oneof is the future-proofing seam — new
+// resource types add a new variant (numbered additively) without
+// touching the request envelope.
+message ConfigOp {
+  oneof op {
+    // Upsert a Pipeline by Pipeline.name. Replaces the existing
+    // pipeline wholesale; no PATCH/FieldMask merge on the server.
+    Pipeline upsert_pipeline = 1;
+
+    // Upsert a Trunk by Trunk.id. Wholesale replace.
+    Trunk upsert_trunk = 2;
+
+    // Replace the entire ordered route list. Routes have no stable
+    // ID, so individual upsert isn't meaningful — the caller sends
+    // the new desired list.
+    RouteList replace_routes = 3;
+
+    // Delete a Pipeline by name. Errors if any remaining route /
+    // sub_pipeline / DialStep references it (caught by the post-
+    // merge validation pass).
+    string delete_pipeline = 4;
+
+    // Delete a Trunk by id. Errors if any remaining route
+    // references it.
+    string delete_trunk = 5;
+
+    // Future variants: User (6), AORAuth (7), ACL (8),
+    // AIWorkerPool (9), VoicemailBox (10), … reserved by
+    // convention. Always add additively, never renumber.
+  }
+
+  // Reserved for future per-op FieldMask-style partial replace.
+  // Today every variant is a wholesale resource swap. If a
+  // programmatic client ever needs to flip a single field
+  // without re-fetching nested secrets, this slot becomes a
+  // FieldMask without breaking existing callers.
+  reserved 100;
+  reserved "field_mask";
+}
+
+// RouteList is the payload for ConfigOp.replace_routes — a
+// thin wrapper around `repeated Route` because oneof cannot
+// contain a bare `repeated` field.
+message RouteList {
+  repeated Route routes = 1;
+}
+
+message WriteConfigResponse {
+  // Version of the ConfigSet AFTER the write. On no_op /
+  // dry_run / rejected paths, echoes the CURRENT version so the
+  // caller's next attempt can use it as parent_version.
+  uint64 version = 1;
+
+  // ETag mirrors version for HTTP-cache-style consumers.
+  string etag = 2;
+
+  // True when the batch was a structural no-op — every op produced
+  // a state proto.Equal to the existing one. Frontend can render
+  // a softer "no changes" signal rather than a "saved" toast.
+  bool no_op = 3;
+
+  // True when dry_run=true — write was not performed regardless
+  // of validation outcome.
   bool dry_run = 4;
+
+  // Validation findings. Populated on INVALID_ARGUMENT (errors)
+  // AND on successful writes (warnings — deprecated fields,
+  // unused trunks, codec-list narrowing, etc). Frontend renders
+  // inline against field paths.
+  repeated ConfigDiagnostic diagnostics = 5;
+
+  // Per-resource change summary. Populated on every response —
+  // dry_run, successful write, and even no_op (empty). Lets the
+  // UI render "what just happened" without a follow-up read.
+  ConfigDiff diff = 6;
 }
 
-message ApplyOperatorConfigResponse {
-  // The version of the new config (or the existing one when
-  // dry_run=true). Frontend stashes this for the next apply's
-  // parent_version.
-  uint64 version = 1;
-  // Validation diagnostics. Populated regardless of success — a
-  // successful apply still returns warnings (deprecated fields,
-  // unused trunks, codec-list narrowing the carrier rejects, etc).
-  // dry_run: same shape, with .applied=false.
-  repeated ConfigDiagnostic diagnostics = 2;
-  bool applied = 3;
+// ConfigDiff is a per-resource change summary spanning every
+// resource type the engine knows about. Scales to new resource
+// types by adding new ResourceChange.resource_type strings — no
+// proto shape change needed.
+message ConfigDiff {
+  repeated ResourceChange changes = 1;
+}
+
+message ResourceChange {
+  // Lowercase resource kind: "pipeline", "trunk", "route",
+  // future "user", "aor_auth", etc. String rather than enum so
+  // adding a new resource type doesn't require a proto bump for
+  // every consumer that only renders changes opaquely.
+  string resource_type = 1;
+
+  // Stable key (Pipeline.name / Trunk.id). Empty for whole-list
+  // replacements (route list) — in that case the resource_type
+  // alone tells the consumer what changed.
+  string key = 2;
+
+  enum ChangeKind {
+    CHANGE_KIND_UNSPECIFIED = 0;
+    CHANGE_KIND_ADDED       = 1;
+    CHANGE_KIND_MODIFIED    = 2;
+    CHANGE_KIND_REMOVED     = 3;
+  }
+  ChangeKind kind = 3;
 }
 
 // =============================================================
-// Partial upsert / replace / delete RPCs (operator console save flow)
+// ImportConfig — bulk replace for bootstrap / migration only
 // =============================================================
 //
-// Each request carries `parent_version` (last version observed by
-// the caller) for OCC. Server merges the requested mutation into
-// the live ConfigSet, validates the merged result against live
-// cross-references (route → pipeline, route → trunk, etc.), and
-// either writes a new version or returns Aborted (concurrent
-// write) / InvalidArgument (validation failed) / NotFound (the
-// resource the caller wants to delete doesn't exist).
+// ImportConfig is the ONLY way to push a wholesale OperatorConfig
+// blob. It's deliberately separate from WriteConfig because the
+// concurrent-edit hazards are different: a routine "save trunk"
+// must NOT clobber a sibling operator's parallel route edit, and
+// WriteConfig's batched OCC enforces that. ImportConfig
+// explicitly replaces the entire ConfigSet — it's meant for
+// initial cluster bootstrap (empty configstore + yaml seed) and
+// operator-supervised disaster recovery (rolling back to an
+// exported snapshot).
 //
-// Idempotency: if the post-merge OperatorConfig is byte-equal to
-// the pre-merge one (proto.Equal at the affected collection),
-// no new version is written; response carries no_op=true.
-//
-// Server-side `parent_version=0` is force-apply (skips OCC) and
-// is reserved for legacy ApplyOperatorConfig — partial Upsert
-// handlers reject parent_version=0 with InvalidArgument to keep
-// the contract honest (frontend always reads-then-writes).
+// Frontend's per-form "Save" handlers MUST NOT call ImportConfig.
+// If a frontend tab needs a bulk import path, it goes through a
+// dedicated "Import config" operator-gated workflow.
 
-message UpsertPipelineRequest {
-  string   group          = 1;
-  uint64   parent_version = 2;
-  string   applied_by     = 3;  // audit string, mirrors ApplyOperatorConfigRequest.applied_by
-  Pipeline pipeline       = 4;
+message ImportConfigRequest {
+  string         group       = 1;
+  OperatorConfig config      = 2;
+  string         applied_by  = 3;
+  // dry_run: validate + diff against the current ConfigSet
+  // without writing.
+  bool           dry_run     = 4;
+  // parent_version is REQUIRED unless allow_force=true. Routine
+  // imports (re-importing from version control) pass the version
+  // they last read. Force-import skips OCC — for cluster
+  // bootstrap on an empty configstore, OR operator-supervised
+  // disaster recovery. Engine logs a high-visibility warning on
+  // every force-import.
+  uint64         parent_version = 5;
+  bool           allow_force    = 6;
 }
 
-message UpsertTrunkRequest {
-  string group          = 1;
-  uint64 parent_version = 2;
-  string applied_by     = 3;
-  Trunk  trunk          = 4;
-}
-
-message ReplaceRoutesRequest {
-  string         group          = 1;
-  uint64         parent_version = 2;
-  string         applied_by     = 3;
-  // Full replacement of OperatorConfig.routes — order significant.
-  // Empty list = wipe routes (rejected if any pipeline in the
-  // ConfigSet expects a route, but no such constraint today).
-  repeated Route routes         = 4;
-}
-
-message DeletePipelineRequest {
-  string group          = 1;
-  uint64 parent_version = 2;
-  string applied_by     = 3;
-  string name           = 4;  // unique key
-}
-
-message DeleteTrunkRequest {
-  string group          = 1;
-  uint64 parent_version = 2;
-  string applied_by     = 3;
-  string id             = 4;  // unique key
-}
-
-// UpsertResponse — returned by every partial RPC. On the rejected
-// path (InvalidArgument / Aborted / NotFound), the gRPC error
-// carries the canonical status; `diagnostics` are populated only
-// on InvalidArgument and mirror the ApplyOperatorConfigResponse
-// shape so frontend has a single rendering path.
-message UpsertResponse {
-  // Version of ConfigSet after the operation. On no_op or rejected
-  // paths, this is the CURRENT version (not the would-be next one).
-  uint64 version = 1;
-  // ETag of ConfigSet after the operation. Same semantics as version.
-  string etag    = 2;
-  // True when the request was a no-op — incoming resource was
-  // proto.Equal to what's already in the ConfigSet. Frontend can
-  // skip the "saved" toast or render a softer signal.
-  bool no_op    = 3;
-  // Populated on InvalidArgument. Same shape as ApplyOperatorConfig
-  // diagnostics; frontend renders inline against field paths.
+message ImportConfigResponse {
+  uint64                    version     = 1;
+  string                    etag        = 2;
+  bool                      dry_run     = 3;
   repeated ConfigDiagnostic diagnostics = 4;
+  ConfigDiff                diff        = 5;
 }
 
 // ConfigDiagnostic — a single validation finding. Frontend renders
@@ -1251,38 +1365,22 @@ message SipTraceEvent {
 // ============================================================
 
 service OperatorAPI {
-  // ----- Atomic config (the constructor's main hook) -----
+  // ----- Config read + write surface -----
+  //
+  // Read: GetOperatorConfig returns the full config + current version.
+  //
+  // Write: WriteConfig is the ONLY routine write path. The request
+  // carries a batch of ConfigOps (upserts/deletes) plus OCC
+  // parent_version; the engine applies the batch atomically, validates
+  // the post-merge cross-ref graph, and returns the new version.
+  // See WriteConfigRequest for full semantics.
+  //
+  // Bulk replace (cluster bootstrap, disaster-recovery rollback) goes
+  // through ImportConfig — gated behind allow_force and meant for
+  // operator-supervised workflows, NOT routine form saves.
   rpc GetOperatorConfig(GetOperatorConfigRequest) returns (OperatorConfigResponse);
-  rpc ApplyOperatorConfig(ApplyOperatorConfigRequest) returns (ApplyOperatorConfigResponse);
-
-  // ----- Per-resource partial upserts (operator console save flow) -----
-  //
-  // Frontend pushes only what changed; the engine merges the incoming
-  // resource into the current ConfigSet and re-validates the merged
-  // result against live cross-references. Concurrency is handled via
-  // ConfigSet-wide parent_version (matching ApplyOperatorConfig OCC) —
-  // a stale parent_version returns ABORTED, the BFF refetches and
-  // bounded-retries.
-  //
-  // Each handler:
-  //   1. Loads live ConfigSet body, unmarshals to OperatorConfig.
-  //   2. Mutates a local copy by key (Pipeline.name / Trunk.id) or
-  //      replaces a list (Routes).
-  //   3. Skips write if proto.Equal before/after — idempotent path,
-  //      returns the current version with no_op=true.
-  //   4. Runs validateOperatorConfig on the merged result; structured
-  //      diagnostics on the rejected path.
-  //   5. Calls configstore.Apply with parent_version; OCC mismatch
-  //      surfaces as Aborted to the caller.
-  //
-  // Routes don't have stable IDs — ReplaceRoutes pushes the whole
-  // ordered list. Pipelines (by name) and Trunks (by id) are
-  // upsertable individually.
-  rpc UpsertPipeline(UpsertPipelineRequest) returns (UpsertResponse);
-  rpc UpsertTrunk(UpsertTrunkRequest)       returns (UpsertResponse);
-  rpc ReplaceRoutes(ReplaceRoutesRequest)   returns (UpsertResponse);
-  rpc DeletePipeline(DeletePipelineRequest) returns (UpsertResponse);
-  rpc DeleteTrunk(DeleteTrunkRequest)       returns (UpsertResponse);
+  rpc WriteConfig(WriteConfigRequest)             returns (WriteConfigResponse);
+  rpc ImportConfig(ImportConfigRequest)           returns (ImportConfigResponse);
 
   // ----- Per-resource read views -----
   rpc ListTrunks(ListTrunksRequest)       returns (ListTrunksResponse);

@@ -1056,13 +1056,28 @@ service Pipeline {
   rpc Synthesize (SynthesizeRequest) returns (SynthesizeResponse);
   rpc Transcribe (stream AudioFrame) returns (stream TranscribeResponse);
   // Chat — single-shot text-in/text-out call to the configured LLM
-  // backend (OllamaLLM is the only v1 plugin). The edge owns the
-  // multi-turn history; the request carries the full conversation
-  // every time, exactly as ollama / openai expect. Unary, not
-  // streaming — v1 waits for full completion before TTS kicks in.
-  // Streaming partial tokens (for token-by-token TTS) is a v2 thing
-  // once edge gains a streaming-Synthesize path.
+  // backend (Ollama / Gemini today). The edge owns the multi-turn
+  // history; the request carries the full conversation every time.
+  // Unary: edge waits for the full reply before TTS kicks in.
   rpc Chat (ChatRequest) returns (ChatResponse);
+  // ChatStream — server-streams partial replies as the upstream LLM
+  // generates them. ai-worker accumulates tokens into sentence-bounded
+  // chunks, synthesizes each sentence through the configured TTS, and
+  // streams back {text, encoded_audio} per chunk so the edge can play
+  // audio for sentence N while ai-worker is still generating
+  // sentence N+1.
+  //
+  // First-audio latency drop is the win — ~50-70% on long replies
+  // (qwen3 9B at ~30 tok/s: first sentence in ~700ms vs the full ~3s
+  // wait). Total turn length doesn't change (LLM is bottleneck); the
+  // caller hears the bot start talking sooner. Cost is identical to
+  // Chat — streaming Gemini / Ollama bills the same as unary.
+  //
+  // Plugins that don't support streaming (or have a streaming-equivalent
+  // upstream that's not worth wiring) fall back to internally invoking
+  // chat() and emitting one final ChatStreamChunk with the whole reply
+  // — the edge's playback loop works uniformly regardless.
+  rpc ChatStream (ChatRequest) returns (stream ChatStreamChunk);
 }
 
 message SynthesizeRequest {
@@ -1199,6 +1214,14 @@ message ChatRequest {
   // pipeline needs a hard ceiling — e.g. smoke flows want short
   // turns so TTS finishes inside the gRPC deadline.
   uint32 max_completion_tokens = 4;
+  // Voice ID for the TTS leg of ChatStream. Same opaque-string
+  // contract as SynthesizeRequest.voice (Piper voice, Google
+  // Neural2 name, ElevenLabs UUID, etc). Ignored on unary Chat.
+  string voice = 5;
+  // Target codec for the audio bytes ChatStream returns. Edge
+  // supplies the call's negotiated codec so the chunks land RTP-ready.
+  // Ignored on unary Chat.
+  Codec output_codec = 6;
 }
 
 message ChatResponse {
@@ -1220,6 +1243,40 @@ message ChatResponse {
   // populate them (some backends don't). Operator informational.
   uint32 prompt_tokens     = 4;
   uint32 completion_tokens = 5;
+}
+
+// ChatStreamChunk is one sentence-bounded piece of the bot's reply
+// plus its pre-synthesized audio. Streamed back to the edge in order
+// — concatenating .text across all chunks equals what ChatResponse.text
+// would have been on the unary path.
+//
+// audio_codec / audio bytes match Synthesize's contract: encoded
+// frames (160 bytes per 20 ms ptime) ready for the edge to push
+// into the RTP stream directly. The edge supplies the target codec
+// in the ChatRequest's `output_codec`; the chunk echoes it back so
+// the playback loop can validate.
+message ChatStreamChunk {
+  // Sentence-bounded piece of the reply. Concatenation across the
+  // whole stream equals ChatResponse.text (modulo whitespace).
+  string text          = 1;
+  // Pre-synthesized audio bytes for this chunk. Empty when the
+  // upstream LLM produced text but ai-worker's TTS plugin returned
+  // an empty result (rare; treat as "skip playback for this chunk
+  // but keep accumulating text").
+  bytes  audio         = 2;
+  uint32 audio_duration_ms = 3;
+  Codec  audio_codec   = 4;
+  // True on the LAST chunk. Final chunk also carries the rolled-up
+  // metrics in the fields below (latency_ms / prompt_tokens / ...).
+  // Non-final chunks leave these zero.
+  bool   is_final      = 5;
+  // Rolled up across the whole stream. Populated on the final chunk
+  // so the edge can log/metric per-turn cost the same way it does
+  // for unary Chat.
+  string model              = 10;
+  uint32 latency_ms         = 11;
+  uint32 prompt_tokens      = 12;
+  uint32 completion_tokens  = 13;
 }
 
 // -------------------------------------------------------------------------

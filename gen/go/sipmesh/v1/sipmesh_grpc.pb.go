@@ -2009,6 +2009,7 @@ const (
 	Pipeline_Synthesize_FullMethodName = "/sipmesh.v1.Pipeline/Synthesize"
 	Pipeline_Transcribe_FullMethodName = "/sipmesh.v1.Pipeline/Transcribe"
 	Pipeline_Chat_FullMethodName       = "/sipmesh.v1.Pipeline/Chat"
+	Pipeline_ChatStream_FullMethodName = "/sipmesh.v1.Pipeline/ChatStream"
 )
 
 // PipelineClient is the client API for Pipeline service.
@@ -2032,13 +2033,28 @@ type PipelineClient interface {
 	Synthesize(ctx context.Context, in *SynthesizeRequest, opts ...grpc.CallOption) (*SynthesizeResponse, error)
 	Transcribe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AudioFrame, TranscribeResponse], error)
 	// Chat — single-shot text-in/text-out call to the configured LLM
-	// backend (OllamaLLM is the only v1 plugin). The edge owns the
-	// multi-turn history; the request carries the full conversation
-	// every time, exactly as ollama / openai expect. Unary, not
-	// streaming — v1 waits for full completion before TTS kicks in.
-	// Streaming partial tokens (for token-by-token TTS) is a v2 thing
-	// once edge gains a streaming-Synthesize path.
+	// backend (Ollama / Gemini today). The edge owns the multi-turn
+	// history; the request carries the full conversation every time.
+	// Unary: edge waits for the full reply before TTS kicks in.
 	Chat(ctx context.Context, in *ChatRequest, opts ...grpc.CallOption) (*ChatResponse, error)
+	// ChatStream — server-streams partial replies as the upstream LLM
+	// generates them. ai-worker accumulates tokens into sentence-bounded
+	// chunks, synthesizes each sentence through the configured TTS, and
+	// streams back {text, encoded_audio} per chunk so the edge can play
+	// audio for sentence N while ai-worker is still generating
+	// sentence N+1.
+	//
+	// First-audio latency drop is the win — ~50-70% on long replies
+	// (qwen3 9B at ~30 tok/s: first sentence in ~700ms vs the full ~3s
+	// wait). Total turn length doesn't change (LLM is bottleneck); the
+	// caller hears the bot start talking sooner. Cost is identical to
+	// Chat — streaming Gemini / Ollama bills the same as unary.
+	//
+	// Plugins that don't support streaming (or have a streaming-equivalent
+	// upstream that's not worth wiring) fall back to internally invoking
+	// chat() and emitting one final ChatStreamChunk with the whole reply
+	// — the edge's playback loop works uniformly regardless.
+	ChatStream(ctx context.Context, in *ChatRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatStreamChunk], error)
 }
 
 type pipelineClient struct {
@@ -2082,6 +2098,25 @@ func (c *pipelineClient) Chat(ctx context.Context, in *ChatRequest, opts ...grpc
 	return out, nil
 }
 
+func (c *pipelineClient) ChatStream(ctx context.Context, in *ChatRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatStreamChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Pipeline_ServiceDesc.Streams[1], Pipeline_ChatStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ChatRequest, ChatStreamChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Pipeline_ChatStreamClient = grpc.ServerStreamingClient[ChatStreamChunk]
+
 // PipelineServer is the server API for Pipeline service.
 // All implementations must embed UnimplementedPipelineServer
 // for forward compatibility.
@@ -2103,13 +2138,28 @@ type PipelineServer interface {
 	Synthesize(context.Context, *SynthesizeRequest) (*SynthesizeResponse, error)
 	Transcribe(grpc.BidiStreamingServer[AudioFrame, TranscribeResponse]) error
 	// Chat — single-shot text-in/text-out call to the configured LLM
-	// backend (OllamaLLM is the only v1 plugin). The edge owns the
-	// multi-turn history; the request carries the full conversation
-	// every time, exactly as ollama / openai expect. Unary, not
-	// streaming — v1 waits for full completion before TTS kicks in.
-	// Streaming partial tokens (for token-by-token TTS) is a v2 thing
-	// once edge gains a streaming-Synthesize path.
+	// backend (Ollama / Gemini today). The edge owns the multi-turn
+	// history; the request carries the full conversation every time.
+	// Unary: edge waits for the full reply before TTS kicks in.
 	Chat(context.Context, *ChatRequest) (*ChatResponse, error)
+	// ChatStream — server-streams partial replies as the upstream LLM
+	// generates them. ai-worker accumulates tokens into sentence-bounded
+	// chunks, synthesizes each sentence through the configured TTS, and
+	// streams back {text, encoded_audio} per chunk so the edge can play
+	// audio for sentence N while ai-worker is still generating
+	// sentence N+1.
+	//
+	// First-audio latency drop is the win — ~50-70% on long replies
+	// (qwen3 9B at ~30 tok/s: first sentence in ~700ms vs the full ~3s
+	// wait). Total turn length doesn't change (LLM is bottleneck); the
+	// caller hears the bot start talking sooner. Cost is identical to
+	// Chat — streaming Gemini / Ollama bills the same as unary.
+	//
+	// Plugins that don't support streaming (or have a streaming-equivalent
+	// upstream that's not worth wiring) fall back to internally invoking
+	// chat() and emitting one final ChatStreamChunk with the whole reply
+	// — the edge's playback loop works uniformly regardless.
+	ChatStream(*ChatRequest, grpc.ServerStreamingServer[ChatStreamChunk]) error
 	mustEmbedUnimplementedPipelineServer()
 }
 
@@ -2128,6 +2178,9 @@ func (UnimplementedPipelineServer) Transcribe(grpc.BidiStreamingServer[AudioFram
 }
 func (UnimplementedPipelineServer) Chat(context.Context, *ChatRequest) (*ChatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Chat not implemented")
+}
+func (UnimplementedPipelineServer) ChatStream(*ChatRequest, grpc.ServerStreamingServer[ChatStreamChunk]) error {
+	return status.Error(codes.Unimplemented, "method ChatStream not implemented")
 }
 func (UnimplementedPipelineServer) mustEmbedUnimplementedPipelineServer() {}
 func (UnimplementedPipelineServer) testEmbeddedByValue()                  {}
@@ -2193,6 +2246,17 @@ func _Pipeline_Chat_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Pipeline_ChatStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ChatRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(PipelineServer).ChatStream(m, &grpc.GenericServerStream[ChatRequest, ChatStreamChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Pipeline_ChatStreamServer = grpc.ServerStreamingServer[ChatStreamChunk]
+
 // Pipeline_ServiceDesc is the grpc.ServiceDesc for Pipeline service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2215,6 +2279,11 @@ var Pipeline_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _Pipeline_Transcribe_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "ChatStream",
+			Handler:       _Pipeline_ChatStream_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "sipmesh/v1/sipmesh.proto",

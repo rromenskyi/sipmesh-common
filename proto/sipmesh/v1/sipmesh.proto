@@ -1126,6 +1126,14 @@ message AudioFrame {
   // edge's VAD detected end-of-speech). Tells the STT plugin to
   // finalize and emit the final transcript.
   bool  is_endpoint = 2;
+  // Optional language hint forwarded to the STT plugin. Only the
+  // FIRST AudioFrame in a Transcribe stream is inspected; subsequent
+  // frames in the same stream MUST leave this empty. Empty = let
+  // the plugin auto-detect. Sourced from Pipeline.stt_language at
+  // call setup; edge passes it through unchanged. Short ISO 639-1
+  // (`en`, `ru`, `uk`) or BCP-47 (`en-US`, `ru-RU`) per
+  // operatorapi.Pipeline.stt_language semantics.
+  string language_hint = 3;
 }
 
 message TranscribeResponse {

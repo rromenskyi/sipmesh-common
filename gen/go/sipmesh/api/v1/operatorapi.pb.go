@@ -2950,6 +2950,26 @@ type Pipeline struct {
 	//   - A/B: shadow-route some pipelines to a new ai-worker build
 	//     without flipping the whole cluster.
 	AiWorkerLabel string `protobuf:"bytes,4,opt,name=ai_worker_label,json=aiWorkerLabel,proto3" json:"ai_worker_label,omitempty"`
+	// Forces the STT plugin's language detection for calls flowing
+	// through this pipeline. Empty (default) = auto-detect. Set when
+	// the pipeline serves callers known to speak one specific
+	// language and auto-detect on 8 kHz telephony audio is
+	// unreliable enough to misclassify (rare on
+	// large-v3-turbo-q5_0, common on smaller faster_whisper models
+	// like `tiny`/`base`).
+	//
+	// Format: short ISO 639-1 (`en`, `ru`, `uk`) accepted by every
+	// STT backend, or full BCP-47 (`en-US`, `ru-RU`) for backends
+	// that prefer it (Google Cloud Speech-to-Text v2). The
+	// ai-worker normalizes per-plugin.
+	//
+	// Replaces the previous WHISPER_LANGUAGE env-var pin (one
+	// language per pool, all callers misclassified into it) with
+	// per-pipeline opt-in. Pipelines authored without this field
+	// inherit auto-detect — the safe default. Sister
+	// `ConverseStep.default_language` is the FALLBACK when
+	// detection fails; this field, when set, OVERRIDES detection.
+	SttLanguage   string `protobuf:"bytes,5,opt,name=stt_language,json=sttLanguage,proto3" json:"stt_language,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3008,6 +3028,13 @@ func (x *Pipeline) GetSteps() []*PipelineStep {
 func (x *Pipeline) GetAiWorkerLabel() string {
 	if x != nil {
 		return x.AiWorkerLabel
+	}
+	return ""
+}
+
+func (x *Pipeline) GetSttLanguage() string {
+	if x != nil {
+		return x.SttLanguage
 	}
 	return ""
 }
@@ -7491,12 +7518,13 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\bCallerID\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x12\n" +
 	"\x04user\x18\x02 \x01(\tR\x04user\x12\x12\n" +
-	"\x04host\x18\x03 \x01(\tR\x04host\"\xa6\x01\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\"\xc9\x01\n" +
 	"\bPipeline\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x11max_call_duration\x18\x02 \x01(\tR\x0fmaxCallDuration\x122\n" +
 	"\x05steps\x18\x03 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps\x12&\n" +
-	"\x0fai_worker_label\x18\x04 \x01(\tR\raiWorkerLabel\"\x8a\n" +
+	"\x0fai_worker_label\x18\x04 \x01(\tR\raiWorkerLabel\x12!\n" +
+	"\fstt_language\x18\x05 \x01(\tR\vsttLanguage\"\x8a\n" +
 	"\n" +
 	"\fPipelineStep\x12)\n" +
 	"\x03say\x18\x01 \x01(\v2\x17.sipmesh.api.v1.SayStepR\x03say\x122\n" +

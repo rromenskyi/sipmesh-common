@@ -642,6 +642,26 @@ message Pipeline {
   //  - A/B: shadow-route some pipelines to a new ai-worker build
   //    without flipping the whole cluster.
   string ai_worker_label = 4;
+  // Forces the STT plugin's language detection for calls flowing
+  // through this pipeline. Empty (default) = auto-detect. Set when
+  // the pipeline serves callers known to speak one specific
+  // language and auto-detect on 8 kHz telephony audio is
+  // unreliable enough to misclassify (rare on
+  // large-v3-turbo-q5_0, common on smaller faster_whisper models
+  // like `tiny`/`base`).
+  //
+  // Format: short ISO 639-1 (`en`, `ru`, `uk`) accepted by every
+  // STT backend, or full BCP-47 (`en-US`, `ru-RU`) for backends
+  // that prefer it (Google Cloud Speech-to-Text v2). The
+  // ai-worker normalizes per-plugin.
+  //
+  // Replaces the previous WHISPER_LANGUAGE env-var pin (one
+  // language per pool, all callers misclassified into it) with
+  // per-pipeline opt-in. Pipelines authored without this field
+  // inherit auto-detect — the safe default. Sister
+  // `ConverseStep.default_language` is the FALLBACK when
+  // detection fails; this field, when set, OVERRIDES detection.
+  string stt_language = 5;
 }
 
 message PipelineStep {

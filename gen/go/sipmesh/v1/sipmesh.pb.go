@@ -5167,7 +5167,15 @@ type AudioFrame struct {
 	// is_endpoint=true on the LAST frame of the utterance (after the
 	// edge's VAD detected end-of-speech). Tells the STT plugin to
 	// finalize and emit the final transcript.
-	IsEndpoint    bool `protobuf:"varint,2,opt,name=is_endpoint,json=isEndpoint,proto3" json:"is_endpoint,omitempty"`
+	IsEndpoint bool `protobuf:"varint,2,opt,name=is_endpoint,json=isEndpoint,proto3" json:"is_endpoint,omitempty"`
+	// Optional language hint forwarded to the STT plugin. Only the
+	// FIRST AudioFrame in a Transcribe stream is inspected; subsequent
+	// frames in the same stream MUST leave this empty. Empty = let
+	// the plugin auto-detect. Sourced from Pipeline.stt_language at
+	// call setup; edge passes it through unchanged. Short ISO 639-1
+	// (`en`, `ru`, `uk`) or BCP-47 (`en-US`, `ru-RU`) per
+	// operatorapi.Pipeline.stt_language semantics.
+	LanguageHint  string `protobuf:"bytes,3,opt,name=language_hint,json=languageHint,proto3" json:"language_hint,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5214,6 +5222,13 @@ func (x *AudioFrame) GetIsEndpoint() bool {
 		return x.IsEndpoint
 	}
 	return false
+}
+
+func (x *AudioFrame) GetLanguageHint() string {
+	if x != nil {
+		return x.LanguageHint
+	}
+	return ""
 }
 
 type TranscribeResponse struct {
@@ -6995,12 +7010,13 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x05audio\x18\x01 \x01(\fR\x05audio\x12\x1f\n" +
 	"\vduration_ms\x18\x02 \x01(\rR\n" +
 	"durationMs\x12\x1b\n" +
-	"\tcache_key\x18\x03 \x01(\tR\bcacheKey\"J\n" +
+	"\tcache_key\x18\x03 \x01(\tR\bcacheKey\"o\n" +
 	"\n" +
 	"AudioFrame\x12\x1b\n" +
 	"\tpcm_s16le\x18\x01 \x01(\fR\bpcmS16le\x12\x1f\n" +
 	"\vis_endpoint\x18\x02 \x01(\bR\n" +
-	"isEndpoint\"\x7f\n" +
+	"isEndpoint\x12#\n" +
+	"\rlanguage_hint\x18\x03 \x01(\tR\flanguageHint\"\x7f\n" +
 	"\x12TranscribeResponse\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x19\n" +
 	"\bis_final\x18\x02 \x01(\bR\aisFinal\x12\x1a\n" +

@@ -2969,9 +2969,38 @@ type Pipeline struct {
 	// inherit auto-detect — the safe default. Sister
 	// `ConverseStep.default_language` is the FALLBACK when
 	// detection fails; this field, when set, OVERRIDES detection.
-	SttLanguage   string `protobuf:"bytes,5,opt,name=stt_language,json=sttLanguage,proto3" json:"stt_language,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	SttLanguage string `protobuf:"bytes,5,opt,name=stt_language,json=sttLanguage,proto3" json:"stt_language,omitempty"`
+	// ambience_track is the operator-uploaded background bed mixed
+	// under the bot's TTS so calls sound like they originate from a
+	// real office (typing, distant chatter, the occasional phone
+	// ring). Frontend normalizes the upload to 8 kHz mono int16 LE
+	// PCM at RMS −20 dBFS with 200 ms cosine loop-boundary fades, then
+	// PUTs to S3 and references the resulting `s3://...` URI here.
+	// The engine's `internal/edgemgr/audio_resolver.go` fetches and
+	// mixes the loop into the outbound audio. Empty = no ambience
+	// (default; current behaviour for every existing pipeline).
+	//
+	// Stable URIs only: the bytes at this URI are immutable once
+	// written. Frontend treats an "update" as upload-then-rebind
+	// (new URI, new ambience_clip row), not a mutation on the
+	// existing object. The engine's resolver caches per-URI so
+	// re-resolves are cheap.
+	AmbienceTrack string `protobuf:"bytes,6,opt,name=ambience_track,json=ambienceTrack,proto3" json:"ambience_track,omitempty"`
+	// ambience_gain_db is the per-pipeline gain offset applied on
+	// top of the engine's stock mix gain (today −5 dB). Positive
+	// makes the bed louder, negative quieter. Range is operator-
+	// facing only; engine clamps. Default 0.0 = stock mix gain.
+	//
+	// Validation in the dashboard limits this to −40..+6 dB so an
+	// operator can't accidentally clip from a positive high gain;
+	// engine enforces the same ceiling but accepts anything in the
+	// double range on the wire for forward compat with policy
+	// tweaks.
+	//
+	// Ignored when ambience_track is empty.
+	AmbienceGainDb float64 `protobuf:"fixed64,7,opt,name=ambience_gain_db,json=ambienceGainDb,proto3" json:"ambience_gain_db,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Pipeline) Reset() {
@@ -3037,6 +3066,20 @@ func (x *Pipeline) GetSttLanguage() string {
 		return x.SttLanguage
 	}
 	return ""
+}
+
+func (x *Pipeline) GetAmbienceTrack() string {
+	if x != nil {
+		return x.AmbienceTrack
+	}
+	return ""
+}
+
+func (x *Pipeline) GetAmbienceGainDb() float64 {
+	if x != nil {
+		return x.AmbienceGainDb
+	}
+	return 0
 }
 
 type PipelineStep struct {
@@ -7604,13 +7647,15 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\bCallerID\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x12\n" +
 	"\x04user\x18\x02 \x01(\tR\x04user\x12\x12\n" +
-	"\x04host\x18\x03 \x01(\tR\x04host\"\xc9\x01\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\"\x9a\x02\n" +
 	"\bPipeline\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x11max_call_duration\x18\x02 \x01(\tR\x0fmaxCallDuration\x122\n" +
 	"\x05steps\x18\x03 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps\x12&\n" +
 	"\x0fai_worker_label\x18\x04 \x01(\tR\raiWorkerLabel\x12!\n" +
-	"\fstt_language\x18\x05 \x01(\tR\vsttLanguage\"\x8a\n" +
+	"\fstt_language\x18\x05 \x01(\tR\vsttLanguage\x12%\n" +
+	"\x0eambience_track\x18\x06 \x01(\tR\rambienceTrack\x12(\n" +
+	"\x10ambience_gain_db\x18\a \x01(\x01R\x0eambienceGainDb\"\x8a\n" +
 	"\n" +
 	"\fPipelineStep\x12)\n" +
 	"\x03say\x18\x01 \x01(\v2\x17.sipmesh.api.v1.SayStepR\x03say\x122\n" +

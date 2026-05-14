@@ -662,6 +662,35 @@ message Pipeline {
   // `ConverseStep.default_language` is the FALLBACK when
   // detection fails; this field, when set, OVERRIDES detection.
   string stt_language = 5;
+  // ambience_track is the operator-uploaded background bed mixed
+  // under the bot's TTS so calls sound like they originate from a
+  // real office (typing, distant chatter, the occasional phone
+  // ring). Frontend normalizes the upload to 8 kHz mono int16 LE
+  // PCM at RMS −20 dBFS with 200 ms cosine loop-boundary fades, then
+  // PUTs to S3 and references the resulting `s3://...` URI here.
+  // The engine's `internal/edgemgr/audio_resolver.go` fetches and
+  // mixes the loop into the outbound audio. Empty = no ambience
+  // (default; current behaviour for every existing pipeline).
+  //
+  // Stable URIs only: the bytes at this URI are immutable once
+  // written. Frontend treats an "update" as upload-then-rebind
+  // (new URI, new ambience_clip row), not a mutation on the
+  // existing object. The engine's resolver caches per-URI so
+  // re-resolves are cheap.
+  string ambience_track = 6;
+  // ambience_gain_db is the per-pipeline gain offset applied on
+  // top of the engine's stock mix gain (today −5 dB). Positive
+  // makes the bed louder, negative quieter. Range is operator-
+  // facing only; engine clamps. Default 0.0 = stock mix gain.
+  //
+  // Validation in the dashboard limits this to −40..+6 dB so an
+  // operator can't accidentally clip from a positive high gain;
+  // engine enforces the same ceiling but accepts anything in the
+  // double range on the wire for forward compat with policy
+  // tweaks.
+  //
+  // Ignored when ambience_track is empty.
+  double ambience_gain_db = 7;
 }
 
 message PipelineStep {

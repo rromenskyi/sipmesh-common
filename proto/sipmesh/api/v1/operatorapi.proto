@@ -662,6 +662,78 @@ message Pipeline {
   // `ConverseStep.default_language` is the FALLBACK when
   // detection fails; this field, when set, OVERRIDES detection.
   string stt_language = 5;
+  // Field numbers 6 + 7 are reserved for the in-flight ambience
+  // pull request (PR #22): Pipeline.ambience_track +
+  // Pipeline.ambience_gain_db. This PR sequences AFTER #22.
+
+  // voice_pools_by_language is the per-pipeline TTS voice + bot-
+  // persona pool. When non-empty, the engine picks ONE (voice, name)
+  // tuple per call at call start, locks it for the call's lifetime,
+  // and uses that voice for every TTS clip + substitutes the chosen
+  // name into every pipeline text field's `{{bot_name}}` placeholder.
+  // Empty = legacy behaviour: ConverseStep / SayStep
+  // `voice_by_language` (single string per language) is used and
+  // there is no bot_name.
+  //
+  // Why per-Pipeline (and not per-step): a multi-step pipeline
+  // (greeting SayStep → ConverseStep → goodbye SayStep) needs the
+  // SAME bot to speak all of it. Voice / name picked once on call
+  // start and consistent end-to-end.
+  //
+  // Keying is the language code (`en`, `ru`, etc — matching the rest
+  // of *_by_language conventions). Each language has its own pool;
+  // the engine selects per-call based on detected / configured
+  // language. A language with an empty pool falls through to the
+  // default_language pool; if THAT is empty too, the legacy
+  // voice_by_language is consulted.
+  //
+  // Surfaced 2026-05-15 alongside the *_text_pool_by_language family
+  // on ConverseStep (fields 20-25) — same wave of "every operator-
+  // facing text/voice surface gains a list-of-variants form so the
+  // bot stops sounding identical call-to-call".
+  map<string, VoicePool> voice_pools_by_language = 8;
+}
+
+// VoicePool — the per-language list of voice entries the engine
+// randomises across. Wrapped in a message because proto's `map`
+// values must be a non-`repeated` type; `repeated` lives inside the
+// VoicePool wrapper. One pool per language; the engine picks one
+// VoiceEntry from the pool per call.
+message VoicePool {
+  repeated VoiceEntry entries = 1;
+}
+
+// VoiceEntry — one (voice, persona) tuple in the rotation. The
+// engine picks an entry at random per call, then a name within the
+// entry at random (when names is non-empty) and binds both for the
+// call's lifetime. Empty names = bot doesn't introduce itself
+// (`{{bot_name}}` substitutes to "").
+message VoiceEntry {
+  // Voice id (Google Cloud TTS `en-US-Neural2-J`, Piper
+  // `en_US-amy-medium`, etc — same string the legacy
+  // voice_by_language carried).
+  string voice = 1;
+  // Operator-facing persona gender, metadata only — engine logs
+  // it on the call and surfaces it in transcripts for analytics
+  // ("did female-voiced calls convert better"), but no engine
+  // behaviour branches on it. "M" / "F" / "" — free-form, the
+  // dashboard validates at form time.
+  string gender = 2;
+  // Name pool for THIS voice. Engine picks one per call and
+  // substitutes everywhere `{{bot_name}}` appears in pipeline
+  // text fields. Empty list = no persona name; `{{bot_name}}`
+  // substitutes to "".
+  repeated string names = 3;
+}
+
+// StringList — wrapper used by the *_text_pool_by_language family
+// on ConverseStep. Same reason VoicePool wraps VoiceEntry: proto
+// `map` values cannot themselves be `repeated`. The engine picks
+// one string from the list at random per occurrence (per turn for
+// fallback / ack_intro / slow_ack / reprompt, per call for
+// on_max_turns / unsupported_lang).
+message StringList {
+  repeated string values = 1;
 }
 
 message PipelineStep {
@@ -742,6 +814,33 @@ message ConverseStep {
   // operator dashboards can edit it without going through
   // FLOWS_FILE. Empty (all zero fields) = no tone.
   SineToneSpec ack_tone = 19;
+
+  // *_text_pool_by_language are list-of-variants companions to
+  // the corresponding *_text_by_language single-string fields
+  // (3, 4, 5, 8, 9, 10). When a pool field is populated for a
+  // language, the engine picks one string from the list at random
+  // per occurrence — so the bot stops repeating the same exact
+  // fallback / ack / re-prompt phrase across turns and across calls.
+  //
+  // Falls through to the legacy single-string field when the pool
+  // is empty for a language (back-compat — existing pipelines
+  // keep working unchanged).
+  //
+  // Pick semantics:
+  //   - fallback / ack_intro / slow_ack / reprompt: PER TURN (each
+  //     turn that fires it re-rolls the picked variant).
+  //   - on_max_turns / unsupported_lang: PER CALL (a call only
+  //     ever hits these once, so per-call = per-occurrence).
+  //
+  // `{{bot_name}}` placeholder substitution applies to every
+  // picked variant just like the single-string fields (when the
+  // pipeline has a voice_pools_by_language with names defined).
+  map<string, StringList> fallback_text_pool_by_language        = 20;
+  map<string, StringList> ack_intro_text_pool_by_language       = 21;
+  map<string, StringList> slow_ack_text_pool_by_language        = 22;
+  map<string, StringList> reprompt_text_pool_by_language        = 23;
+  map<string, StringList> on_max_turns_text_pool_by_language    = 24;
+  map<string, StringList> unsupported_lang_text_pool_by_language = 25;
 }
 
 // SineToneSpec — a single fixed-frequency sine tone. Synthesised

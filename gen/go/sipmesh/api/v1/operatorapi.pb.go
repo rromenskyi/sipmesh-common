@@ -2996,8 +2996,43 @@ type Pipeline struct {
 	// facing text/voice surface gains a list-of-variants form so the
 	// bot stops sounding identical call-to-call".
 	VoicePoolsByLanguage map[string]*VoicePool `protobuf:"bytes,8,rep,name=voice_pools_by_language,json=voicePoolsByLanguage,proto3" json:"voice_pools_by_language,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// stt_alternative_language_codes lets the STT plugin recognise
+	// callers who may speak any of several languages. Up to 3 codes
+	// (Google Cloud STT limit) on top of the primary `stt_language`
+	// (field 5) — STT detects which one each utterance is in and
+	// returns the matched code in the transcript. Use cases:
+	//   - bilingual lines (en + ru on a CIS-region tenant).
+	//   - regional pipelines where the caller's language isn't
+	//     known a priori (uk + ru + en on a Ukrainian B2C line).
+	//
+	// Empty (the safe default) = single-language detection per
+	// `stt_language`, or full auto-detect if `stt_language` is also
+	// empty.
+	//
+	// Format mirrors `stt_language`: short ISO 639-1 (`en`, `ru`,
+	// `uk`) or BCP-47 (`en-US`, `ru-RU`). The ai-worker normalises
+	// per plugin (Google Cloud uses BCP-47; Whisper variants accept
+	// either).
+	//
+	// Operator-facing note: each alternative costs STT latency
+	// (Google charges per language attempted). Keep the list small
+	// (2-3 entries) for fastest turn-around.
+	SttAlternativeLanguageCodes []string `protobuf:"bytes,9,rep,name=stt_alternative_language_codes,json=sttAlternativeLanguageCodes,proto3" json:"stt_alternative_language_codes,omitempty"`
+	// stt_session_lock — when true, the engine LOCKS to the first
+	// detected language on subsequent transcribes within the same
+	// call. The alternative_language_codes are dropped after the
+	// first successful detection so following utterances pay
+	// single-language STT latency. Recommended on for almost every
+	// bilingual pipeline (callers rarely switch languages mid-call;
+	// staying locked is faster and lowers misrecognition).
+	//
+	// false (the default) keeps alternative_language_codes active
+	// for every utterance — useful when the caller is expected to
+	// code-switch within one call (rare; demos / language-class
+	// pipelines).
+	SttSessionLock bool `protobuf:"varint,10,opt,name=stt_session_lock,json=sttSessionLock,proto3" json:"stt_session_lock,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Pipeline) Reset() {
@@ -3070,6 +3105,20 @@ func (x *Pipeline) GetVoicePoolsByLanguage() map[string]*VoicePool {
 		return x.VoicePoolsByLanguage
 	}
 	return nil
+}
+
+func (x *Pipeline) GetSttAlternativeLanguageCodes() []string {
+	if x != nil {
+		return x.SttAlternativeLanguageCodes
+	}
+	return nil
+}
+
+func (x *Pipeline) GetSttSessionLock() bool {
+	if x != nil {
+		return x.SttSessionLock
+	}
+	return false
 }
 
 // VoicePool — the per-language list of voice entries the engine
@@ -7881,14 +7930,17 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\bCallerID\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x12\n" +
 	"\x04user\x18\x02 \x01(\tR\x04user\x12\x12\n" +
-	"\x04host\x18\x03 \x01(\tR\x04host\"\x98\x03\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\"\x87\x04\n" +
 	"\bPipeline\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x11max_call_duration\x18\x02 \x01(\tR\x0fmaxCallDuration\x122\n" +
 	"\x05steps\x18\x03 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps\x12&\n" +
 	"\x0fai_worker_label\x18\x04 \x01(\tR\raiWorkerLabel\x12!\n" +
 	"\fstt_language\x18\x05 \x01(\tR\vsttLanguage\x12i\n" +
-	"\x17voice_pools_by_language\x18\b \x03(\v22.sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntryR\x14voicePoolsByLanguage\x1ab\n" +
+	"\x17voice_pools_by_language\x18\b \x03(\v22.sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntryR\x14voicePoolsByLanguage\x12C\n" +
+	"\x1estt_alternative_language_codes\x18\t \x03(\tR\x1bsttAlternativeLanguageCodes\x12(\n" +
+	"\x10stt_session_lock\x18\n" +
+	" \x01(\bR\x0esttSessionLock\x1ab\n" +
 	"\x19VoicePoolsByLanguageEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
 	"\x05value\x18\x02 \x01(\v2\x19.sipmesh.api.v1.VoicePoolR\x05value:\x028\x01\"A\n" +

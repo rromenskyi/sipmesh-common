@@ -2970,6 +2970,31 @@ type Pipeline struct {
 	// `ConverseStep.default_language` is the FALLBACK when
 	// detection fails; this field, when set, OVERRIDES detection.
 	SttLanguage string `protobuf:"bytes,5,opt,name=stt_language,json=sttLanguage,proto3" json:"stt_language,omitempty"`
+	// ambience_track is the operator-uploaded background bed mixed
+	// under the bot's TTS so calls sound like they originate from a
+	// real office (typing, distant chatter, the occasional phone
+	// ring). Frontend normalises the upload to 8 kHz mono int16 LE
+	// PCM at RMS −20 dBFS with 200 ms cosine loop-boundary fades,
+	// then PUTs to S3 and references the resulting `s3://...` URI
+	// here. The engine's audio_resolver fetches + caches; the active
+	// sender mixes the looped clip into outbound at every frame at
+	// a stock −5 dB attenuation plus `ambience_gain_db`. Empty =
+	// no ambience (default; current behaviour for every existing
+	// pipeline).
+	//
+	// Stable URIs only: the bytes at this URI are immutable once
+	// written. Frontend treats an "update" as upload-then-rebind
+	// (new URI, new ambience_clip row), not a mutation on the
+	// existing object. The engine's resolver caches per-URI so
+	// re-resolves are cheap.
+	AmbienceTrack string `protobuf:"bytes,6,opt,name=ambience_track,json=ambienceTrack,proto3" json:"ambience_track,omitempty"`
+	// ambience_gain_db is the per-pipeline gain offset applied on
+	// top of the engine's stock mix gain (−5 dB). Positive makes
+	// the bed louder, negative quieter. Default 0.0 = stock mix
+	// gain. Engine clamps the final gain to [−40, +6] dB regardless
+	// of operator input so a typo can't blast the caller. Ignored
+	// when ambience_track is empty.
+	AmbienceGainDb float64 `protobuf:"fixed64,7,opt,name=ambience_gain_db,json=ambienceGainDb,proto3" json:"ambience_gain_db,omitempty"`
 	// voice_pools_by_language is the per-pipeline TTS voice + bot-
 	// persona pool. When non-empty, the engine picks ONE (voice, name)
 	// tuple per call at call start, locks it for the call's lifetime,
@@ -3098,6 +3123,20 @@ func (x *Pipeline) GetSttLanguage() string {
 		return x.SttLanguage
 	}
 	return ""
+}
+
+func (x *Pipeline) GetAmbienceTrack() string {
+	if x != nil {
+		return x.AmbienceTrack
+	}
+	return ""
+}
+
+func (x *Pipeline) GetAmbienceGainDb() float64 {
+	if x != nil {
+		return x.AmbienceGainDb
+	}
+	return 0
 }
 
 func (x *Pipeline) GetVoicePoolsByLanguage() map[string]*VoicePool {
@@ -7930,13 +7969,15 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\bCallerID\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x12\n" +
 	"\x04user\x18\x02 \x01(\tR\x04user\x12\x12\n" +
-	"\x04host\x18\x03 \x01(\tR\x04host\"\x87\x04\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\"\xd8\x04\n" +
 	"\bPipeline\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x11max_call_duration\x18\x02 \x01(\tR\x0fmaxCallDuration\x122\n" +
 	"\x05steps\x18\x03 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps\x12&\n" +
 	"\x0fai_worker_label\x18\x04 \x01(\tR\raiWorkerLabel\x12!\n" +
-	"\fstt_language\x18\x05 \x01(\tR\vsttLanguage\x12i\n" +
+	"\fstt_language\x18\x05 \x01(\tR\vsttLanguage\x12%\n" +
+	"\x0eambience_track\x18\x06 \x01(\tR\rambienceTrack\x12(\n" +
+	"\x10ambience_gain_db\x18\a \x01(\x01R\x0eambienceGainDb\x12i\n" +
 	"\x17voice_pools_by_language\x18\b \x03(\v22.sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntryR\x14voicePoolsByLanguage\x12C\n" +
 	"\x1estt_alternative_language_codes\x18\t \x03(\tR\x1bsttAlternativeLanguageCodes\x12(\n" +
 	"\x10stt_session_lock\x18\n" +

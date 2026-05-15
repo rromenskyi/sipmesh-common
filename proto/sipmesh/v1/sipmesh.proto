@@ -1134,6 +1134,18 @@ message AudioFrame {
   // (`en`, `ru`, `uk`) or BCP-47 (`en-US`, `ru-RU`) per
   // operatorapi.Pipeline.stt_language semantics.
   string language_hint = 3;
+  // Optional list of alternative language codes for the STT
+  // plugin to ALSO recognise (in addition to language_hint).
+  // Same first-frame-only contract: subsequent frames MUST leave
+  // empty. Edge sources from
+  // operatorapi.Pipeline.stt_alternative_language_codes; Google
+  // Cloud STT caps the count at 3 (caller responsibility).
+  //
+  // When Pipeline.stt_session_lock is true, the edge DROPS this
+  // list on subsequent Transcribe streams within the call once
+  // the first detection settles — only the first call's first
+  // stream carries the alternatives.
+  repeated string alternative_language_codes = 4;
 }
 
 message TranscribeResponse {

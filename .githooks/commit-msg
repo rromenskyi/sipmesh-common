@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Reject commit messages containing Cyrillic characters. The
+# project's English-only-in-repo rule (operator-stated; CLAUDE.md
+# memory `feedback_english_only_in_repo.md` reinforces) covers
+# code, comments, YAML, PR bodies AND commit messages. Cyrillic
+# leaked into commit 3a6174a (sipmesh-common #23) 2026-05-15
+# despite the rule being well-known; this hook catches it at the
+# commit gate.
+#
+# What the hook does NOT cover (limitations the operator should
+# know): PR descriptions on GitHub (those are metadata edited
+# through the web UI, not stored in git), and `--no-verify`
+# commits. CI backstop is a future addition.
+#
+# Activate locally:  make hooks
+# Bypass (don't):   git commit --no-verify
+
+set -euo pipefail
+
+# The commit message file path is passed as $1 by git.
+msg_file="$1"
+
+# Strip git-added comment lines (#-prefixed) before scanning so
+# the commit-template comments don't false-trigger.
+msg_body=$(grep -v '^#' "$msg_file" || true)
+
+# Cyrillic Unicode block: U+0400..U+04FF (covers Russian,
+# Ukrainian, Belarusian and most adjacent scripts). LC_ALL=C
+# forces grep to treat bytes raw so the regex matches reliably
+# across locales.
+if printf '%s' "$msg_body" | LC_ALL=C grep -qP '[\xD0\xD1][\x80-\xBF]'; then
+    echo "" >&2
+    echo "ERROR: commit message contains Cyrillic characters." >&2
+    echo "" >&2
+    echo "sipmesh repo content (code, comments, YAML, commit msgs," >&2
+    echo "PR bodies) must be English only. Re-author the commit" >&2
+    echo "message in English and try again." >&2
+    echo "" >&2
+    echo "Offending lines:" >&2
+    printf '%s\n' "$msg_body" | grep -nP '[\xD0\xD1][\x80-\xBF]' | head -5 >&2
+    echo "" >&2
+    exit 1
+fi

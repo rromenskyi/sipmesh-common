@@ -758,6 +758,76 @@ message Pipeline {
   // proto pair (DisclosureMode + disclosure_text) — designed in
   // ~/agent-inbox/sipmesh/inbox/2026-05-13-disclosure-mode-frontend-ready.md,
   // deferred 2026-05-15. Do not reuse.
+
+  // barge_in_enabled turns on caller-interrupts-bot detection.
+  // When false (default) the bot speaks every TTS clip to
+  // completion regardless of caller activity — matches the
+  // pre-2026-05-15 behaviour.
+  //
+  // When true, the engine runs a continuous voice-activity
+  // detector on inbound RTP. After `barge_in_voice_ms` of
+  // sustained voiced frames (energy above
+  // `barge_in_energy_dbfs`), the bot's current playback is
+  // interrupted, the FIFO clip queue cleared, and the flow
+  // jumps straight into STT capture — fed with a pre-buffered
+  // tail of the inbound audio (last `barge_in_pre_buffer_ms`
+  // worth of decoded PCM) so the caller's first syllable isn't
+  // truncated.
+  //
+  // Operator-tunable knobs below; defaults pick reasonable
+  // values for typical telephony lines.
+  bool   barge_in_enabled       = 13;
+
+  // barge_in_voice_ms — milliseconds of sustained voiced frames
+  // required to fire the barge-in trigger. Lower = more
+  // aggressive (faster reaction but more false positives from
+  // background noise / cough). Higher = more robust (caller has
+  // to commit to speaking before the bot stops). Default 200 ms
+  // when zero. Typical operator range: 150-400 ms.
+  uint32 barge_in_voice_ms      = 14;
+
+  // barge_in_energy_dbfs — sample-energy threshold (dBFS) above
+  // which a 20 ms frame counts as "voiced" for the
+  // voice_ms-of-sustained-voice gate. Lower (more negative,
+  // e.g. -55) = picks up quieter speech but also quieter noise.
+  // Higher (less negative, e.g. -30) = stricter, only loud
+  // sounds register. Default -45 dBFS when zero.
+  //
+  // This is intentionally a SIMPLE energy gate — operator can
+  // tune for their specific line. A future "Pipeline.barge_in_vad_kind"
+  // field could route to a more discriminating algorithm
+  // (WebRTCVad, etc.) when energy-only false-positives become
+  // a real-world problem.
+  sint32 barge_in_energy_dbfs   = 15;
+
+  // barge_in_pre_buffer_ms — how many milliseconds of decoded
+  // PCM the recv loop keeps in a rolling ring buffer so that on
+  // trigger, the audio the caller had ALREADY spoken before the
+  // VAD confirmed it's voice can still be fed into STT.
+  // Without this, the first ~voice_ms of every barge-in gets
+  // swallowed and STT receives "ивет" instead of "привет".
+  // Default 300 ms when zero (slightly larger than typical
+  // voice_ms to cover the trigger-delay window).
+  uint32 barge_in_pre_buffer_ms = 16;
+
+  // barge_in_ack_text_by_language — optional short phrase the
+  // bot speaks the moment a barge-in fires, BEFORE transitioning
+  // into STT capture ("Yes?", "Listening", "Слушаю"). Gives the
+  // caller acoustic confirmation that the interrupt registered
+  // so they naturally pause briefly + repeat / continue.
+  //
+  // Empty per-language entry = no ack; the engine drops
+  // straight to Listen on barge-in. Operators who prefer the
+  // "barge-in feels instant" UX leave this empty; operators
+  // who want explicit interrupt-confirmation set it.
+  map<string, string>     barge_in_ack_text_by_language       = 17;
+
+  // barge_in_ack_text_pool_by_language — list-of-variants
+  // companion. Engine picks one variant per barge-in occurrence
+  // so the bot's "yes?" doesn't sound repetitive across many
+  // interrupts. Empty pool falls through to the single-string
+  // barge_in_ack_text_by_language.
+  map<string, StringList> barge_in_ack_text_pool_by_language  = 18;
 }
 
 // VoicePool — the per-language list of voice entries the engine

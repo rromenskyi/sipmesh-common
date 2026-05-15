@@ -692,6 +692,48 @@ message Pipeline {
   // facing text/voice surface gains a list-of-variants form so the
   // bot stops sounding identical call-to-call".
   map<string, VoicePool> voice_pools_by_language = 8;
+
+  // stt_alternative_language_codes lets the STT plugin recognise
+  // callers who may speak any of several languages. Up to 3 codes
+  // (Google Cloud STT limit) on top of the primary `stt_language`
+  // (field 5) — STT detects which one each utterance is in and
+  // returns the matched code in the transcript. Use cases:
+  //   - bilingual lines (en + ru on a CIS-region tenant).
+  //   - regional pipelines where the caller's language isn't
+  //     known a priori (uk + ru + en on a Ukrainian B2C line).
+  //
+  // Empty (the safe default) = single-language detection per
+  // `stt_language`, or full auto-detect if `stt_language` is also
+  // empty.
+  //
+  // Format mirrors `stt_language`: short ISO 639-1 (`en`, `ru`,
+  // `uk`) or BCP-47 (`en-US`, `ru-RU`). The ai-worker normalises
+  // per plugin (Google Cloud uses BCP-47; Whisper variants accept
+  // either).
+  //
+  // Operator-facing note: each alternative costs STT latency
+  // (Google charges per language attempted). Keep the list small
+  // (2-3 entries) for fastest turn-around.
+  repeated string stt_alternative_language_codes = 9;
+
+  // stt_session_lock — when true, the engine LOCKS to the first
+  // detected language on subsequent transcribes within the same
+  // call. The alternative_language_codes are dropped after the
+  // first successful detection so following utterances pay
+  // single-language STT latency. Recommended on for almost every
+  // bilingual pipeline (callers rarely switch languages mid-call;
+  // staying locked is faster and lowers misrecognition).
+  //
+  // false (the default) keeps alternative_language_codes active
+  // for every utterance — useful when the caller is expected to
+  // code-switch within one call (rare; demos / language-class
+  // pipelines).
+  bool stt_session_lock = 10;
+
+  // Field numbers 11 + 12 are RESERVED for the AI-disclosure
+  // proto pair (DisclosureMode + disclosure_text) — designed in
+  // ~/agent-inbox/sipmesh/inbox/2026-05-13-disclosure-mode-frontend-ready.md,
+  // deferred 2026-05-15. Do not reuse.
 }
 
 // VoicePool — the per-language list of voice entries the engine

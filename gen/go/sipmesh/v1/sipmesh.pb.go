@@ -5175,9 +5175,21 @@ type AudioFrame struct {
 	// call setup; edge passes it through unchanged. Short ISO 639-1
 	// (`en`, `ru`, `uk`) or BCP-47 (`en-US`, `ru-RU`) per
 	// operatorapi.Pipeline.stt_language semantics.
-	LanguageHint  string `protobuf:"bytes,3,opt,name=language_hint,json=languageHint,proto3" json:"language_hint,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	LanguageHint string `protobuf:"bytes,3,opt,name=language_hint,json=languageHint,proto3" json:"language_hint,omitempty"`
+	// Optional list of alternative language codes for the STT
+	// plugin to ALSO recognise (in addition to language_hint).
+	// Same first-frame-only contract: subsequent frames MUST leave
+	// empty. Edge sources from
+	// operatorapi.Pipeline.stt_alternative_language_codes; Google
+	// Cloud STT caps the count at 3 (caller responsibility).
+	//
+	// When Pipeline.stt_session_lock is true, the edge DROPS this
+	// list on subsequent Transcribe streams within the call once
+	// the first detection settles — only the first call's first
+	// stream carries the alternatives.
+	AlternativeLanguageCodes []string `protobuf:"bytes,4,rep,name=alternative_language_codes,json=alternativeLanguageCodes,proto3" json:"alternative_language_codes,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *AudioFrame) Reset() {
@@ -5229,6 +5241,13 @@ func (x *AudioFrame) GetLanguageHint() string {
 		return x.LanguageHint
 	}
 	return ""
+}
+
+func (x *AudioFrame) GetAlternativeLanguageCodes() []string {
+	if x != nil {
+		return x.AlternativeLanguageCodes
+	}
+	return nil
 }
 
 type TranscribeResponse struct {
@@ -7010,13 +7029,14 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x05audio\x18\x01 \x01(\fR\x05audio\x12\x1f\n" +
 	"\vduration_ms\x18\x02 \x01(\rR\n" +
 	"durationMs\x12\x1b\n" +
-	"\tcache_key\x18\x03 \x01(\tR\bcacheKey\"o\n" +
+	"\tcache_key\x18\x03 \x01(\tR\bcacheKey\"\xad\x01\n" +
 	"\n" +
 	"AudioFrame\x12\x1b\n" +
 	"\tpcm_s16le\x18\x01 \x01(\fR\bpcmS16le\x12\x1f\n" +
 	"\vis_endpoint\x18\x02 \x01(\bR\n" +
 	"isEndpoint\x12#\n" +
-	"\rlanguage_hint\x18\x03 \x01(\tR\flanguageHint\"\x7f\n" +
+	"\rlanguage_hint\x18\x03 \x01(\tR\flanguageHint\x12<\n" +
+	"\x1aalternative_language_codes\x18\x04 \x03(\tR\x18alternativeLanguageCodes\"\x7f\n" +
 	"\x12TranscribeResponse\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x19\n" +
 	"\bis_final\x18\x02 \x01(\bR\aisFinal\x12\x1a\n" +

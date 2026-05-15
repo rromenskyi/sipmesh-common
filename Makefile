@@ -1,4 +1,4 @@
-.PHONY: proto tidy clean
+.PHONY: proto tidy clean hooks
 
 # Regenerate Go bindings from .proto sources. Output goes to
 # gen/go/<package-path>/. Requires `protoc` + `protoc-gen-go` +
@@ -16,3 +16,10 @@ tidy:
 
 clean:
 	rm -rf gen/go/
+
+# One-shot: point this clone's git hooks at .githooks/. Run after
+# the first clone so the commit-msg cyrillic-check gate is active
+# locally. Idempotent. Mirrors the sipmesh repo's hooks target.
+hooks:
+	git config core.hooksPath .githooks
+	@echo "git hooks: core.hooksPath = .githooks (active)"

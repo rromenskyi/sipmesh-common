@@ -521,7 +521,37 @@ message WorkerHello {
   // Register). Scheduler picks the matching family at AllocateCall
   // time based on the offer's connection address.
   string rtp_public_ip_v6 = 11;
+  // ai_pools enumerates the ai-worker pool endpoints this edge has
+  // dialed (one entry per label in its aipipe.Pool config). meshctl
+  // aggregates these from the Registry to drive
+  // OperatorAPI.ListAIWorkers — the dashboard's pool / voice
+  // dropdowns flow from live engine state without operator-side
+  // discovery config on meshctl. Empty on edges that aren't AI-wired
+  // (e.g. greeting-only deploys with AI_WORKER_ADDR unset).
+  //
+  // Source: edge reads its own aipipe.Pool spec at boot. Same data
+  // the routing path uses, so dashboard's view stays consistent with
+  // call-time behaviour without a second config surface.
+  repeated AIPool ai_pools = 12;
   // kind will distinguish edge from ai-worker once the latter lands.
+}
+
+// AIPool is one labeled ai-worker pool the edge dials at call time.
+// Carried inside WorkerHello (per-edge inventory) so meshctl learns
+// the AI topology from the same heartbeat plane it learns the edge
+// topology from.
+message AIPool {
+  // label matches Pipeline.ai_worker_label routing. Empty string is
+  // the default pool.
+  string label = 1;
+  // addr is the dial target the edge uses: <host>:<port> of the
+  // ai-worker's Pipeline gRPC server. meshctl reuses this to call
+  // Pipeline.GetCapability for the voice/llm catalogue.
+  string addr = 2;
+  // max_concurrent mirrors the edge-side semaphore cap on this
+  // pool. Surfaced to the dashboard so operators see headroom per
+  // pool. Zero = unbounded.
+  uint32 max_concurrent = 3;
 }
 
 message WorkerAck {

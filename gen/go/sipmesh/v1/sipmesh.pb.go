@@ -5144,23 +5144,19 @@ func (*GetCapabilityRequest) Descriptor() ([]byte, []int) {
 
 // Capability is one ai-worker pod's self-description: which voices
 // its TTS plugin can synthesize today, which LLM model the chat
-// path is wired to, and how many concurrent gRPC workers the
-// process is sized for. meshctl aggregates per pool_label across
-// replicas (union over voices, dedup by id) when building
-// OperatorAPI.ListAIWorkers, so the dashboard sees one logical
-// entry per pool with the full voice catalogue available to it.
+// path is wired to, plus plugin diagnostics. meshctl pairs this
+// with the WorkerHello.AIPool entry (label + addr + max_concurrent)
+// the edge already advertises — the ai-worker doesn't repeat info
+// the edge already owns about it.
 //
-// pool_label is what Pipeline.ai_worker_label routes to; an empty
-// string is the default pool. The same label across replicas
-// implies the same plugin config (same TTS + LLM + voices) — if
-// operator configures otherwise, the meshctl union still produces
-// a valid superset, just slightly noisy.
+// Field 1 (pool_label) and field 4 (max_concurrent) reserved —
+// they used to live here in v0.6.10 but moved to WorkerHello.AIPool
+// in v0.6.11 since the edge knows them authoritatively from its
+// aipipe.Pool config.
 type Capability struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PoolLabel     string                 `protobuf:"bytes,1,opt,name=pool_label,json=poolLabel,proto3" json:"pool_label,omitempty"`
-	Voices        []*Voice               `protobuf:"bytes,2,rep,name=voices,proto3" json:"voices,omitempty"`
-	LlmModels     []string               `protobuf:"bytes,3,rep,name=llm_models,json=llmModels,proto3" json:"llm_models,omitempty"`
-	MaxConcurrent uint32                 `protobuf:"varint,4,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Voices    []*Voice               `protobuf:"bytes,2,rep,name=voices,proto3" json:"voices,omitempty"`
+	LlmModels []string               `protobuf:"bytes,3,rep,name=llm_models,json=llmModels,proto3" json:"llm_models,omitempty"`
 	// Plugin names for diagnostics ("piper" / "google_cloud" / etc).
 	// Frontend uses these to disambiguate identically-named voices
 	// across pools if needed.
@@ -5201,13 +5197,6 @@ func (*Capability) Descriptor() ([]byte, []int) {
 	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{72}
 }
 
-func (x *Capability) GetPoolLabel() string {
-	if x != nil {
-		return x.PoolLabel
-	}
-	return ""
-}
-
 func (x *Capability) GetVoices() []*Voice {
 	if x != nil {
 		return x.Voices
@@ -5220,13 +5209,6 @@ func (x *Capability) GetLlmModels() []string {
 		return x.LlmModels
 	}
 	return nil
-}
-
-func (x *Capability) GetMaxConcurrent() uint32 {
-	if x != nil {
-		return x.MaxConcurrent
-	}
-	return 0
 }
 
 func (x *Capability) GetTtsPlugin() string {
@@ -7334,21 +7316,19 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x14GetCPSStatusResponse\x12'\n" +
 	"\x03cps\x18\x01 \x03(\v2\x15.sipmesh.v1.CPSBucketR\x03cps\x12?\n" +
 	"\vconcurrency\x18\x02 \x03(\v2\x1d.sipmesh.v1.ConcurrencyBucketR\vconcurrency\"\x16\n" +
-	"\x14GetCapabilityRequest\"\xf9\x01\n" +
+	"\x14GetCapabilityRequest\"\xdb\x01\n" +
 	"\n" +
-	"Capability\x12\x1d\n" +
-	"\n" +
-	"pool_label\x18\x01 \x01(\tR\tpoolLabel\x12)\n" +
+	"Capability\x12)\n" +
 	"\x06voices\x18\x02 \x03(\v2\x11.sipmesh.v1.VoiceR\x06voices\x12\x1d\n" +
 	"\n" +
-	"llm_models\x18\x03 \x03(\tR\tllmModels\x12%\n" +
-	"\x0emax_concurrent\x18\x04 \x01(\rR\rmaxConcurrent\x12\x1d\n" +
+	"llm_models\x18\x03 \x03(\tR\tllmModels\x12\x1d\n" +
 	"\n" +
 	"tts_plugin\x18\x05 \x01(\tR\tttsPlugin\x12\x1d\n" +
 	"\n" +
 	"stt_plugin\x18\x06 \x01(\tR\tsttPlugin\x12\x1d\n" +
 	"\n" +
-	"llm_plugin\x18\a \x01(\tR\tllmPlugin\"_\n" +
+	"llm_plugin\x18\a \x01(\tR\tllmPluginJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05R\n" +
+	"pool_labelR\x0emax_concurrent\"_\n" +
 	"\x05Voice\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x16\n" +

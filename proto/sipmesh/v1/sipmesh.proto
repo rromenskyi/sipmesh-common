@@ -1129,22 +1129,20 @@ message GetCapabilityRequest {}
 
 // Capability is one ai-worker pod's self-description: which voices
 // its TTS plugin can synthesize today, which LLM model the chat
-// path is wired to, and how many concurrent gRPC workers the
-// process is sized for. meshctl aggregates per pool_label across
-// replicas (union over voices, dedup by id) when building
-// OperatorAPI.ListAIWorkers, so the dashboard sees one logical
-// entry per pool with the full voice catalogue available to it.
+// path is wired to, plus plugin diagnostics. meshctl pairs this
+// with the WorkerHello.AIPool entry (label + addr + max_concurrent)
+// the edge already advertises — the ai-worker doesn't repeat info
+// the edge already owns about it.
 //
-// pool_label is what Pipeline.ai_worker_label routes to; an empty
-// string is the default pool. The same label across replicas
-// implies the same plugin config (same TTS + LLM + voices) — if
-// operator configures otherwise, the meshctl union still produces
-// a valid superset, just slightly noisy.
+// Field 1 (pool_label) and field 4 (max_concurrent) reserved —
+// they used to live here in v0.6.10 but moved to WorkerHello.AIPool
+// in v0.6.11 since the edge knows them authoritatively from its
+// aipipe.Pool config.
 message Capability {
-  string pool_label                = 1;
+  reserved 1, 4;
+  reserved "pool_label", "max_concurrent";
   repeated Voice voices            = 2;
   repeated string llm_models       = 3;
-  uint32 max_concurrent            = 4;
   // Plugin names for diagnostics ("piper" / "google_cloud" / etc).
   // Frontend uses these to disambiguate identically-named voices
   // across pools if needed.

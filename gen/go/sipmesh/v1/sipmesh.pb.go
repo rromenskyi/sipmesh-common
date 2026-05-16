@@ -397,7 +397,7 @@ func (x TransferCallRequest_Mode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TransferCallRequest_Mode.Descriptor instead.
 func (TransferCallRequest_Mode) EnumDescriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{60, 0}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{61, 0}
 }
 
 type ChatMessage_Role int32
@@ -449,7 +449,7 @@ func (x ChatMessage_Role) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ChatMessage_Role.Descriptor instead.
 func (ChatMessage_Role) EnumDescriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{79, 0}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{80, 0}
 }
 
 type AllocateCallRequest struct {
@@ -2429,7 +2429,19 @@ type WorkerHello struct {
 	// rtp_public_ip_v6 must be non-empty (validated server-side on
 	// Register). Scheduler picks the matching family at AllocateCall
 	// time based on the offer's connection address.
-	RtpPublicIpV6 string `protobuf:"bytes,11,opt,name=rtp_public_ip_v6,json=rtpPublicIpV6,proto3" json:"rtp_public_ip_v6,omitempty"` // kind will distinguish edge from ai-worker once the latter lands.
+	RtpPublicIpV6 string `protobuf:"bytes,11,opt,name=rtp_public_ip_v6,json=rtpPublicIpV6,proto3" json:"rtp_public_ip_v6,omitempty"`
+	// ai_pools enumerates the ai-worker pool endpoints this edge has
+	// dialed (one entry per label in its aipipe.Pool config). meshctl
+	// aggregates these from the Registry to drive
+	// OperatorAPI.ListAIWorkers — the dashboard's pool / voice
+	// dropdowns flow from live engine state without operator-side
+	// discovery config on meshctl. Empty on edges that aren't AI-wired
+	// (e.g. greeting-only deploys with AI_WORKER_ADDR unset).
+	//
+	// Source: edge reads its own aipipe.Pool spec at boot. Same data
+	// the routing path uses, so dashboard's view stays consistent with
+	// call-time behaviour without a second config surface.
+	AiPools       []*AIPool `protobuf:"bytes,12,rep,name=ai_pools,json=aiPools,proto3" json:"ai_pools,omitempty"` // kind will distinguish edge from ai-worker once the latter lands.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2541,6 +2553,85 @@ func (x *WorkerHello) GetRtpPublicIpV6() string {
 	return ""
 }
 
+func (x *WorkerHello) GetAiPools() []*AIPool {
+	if x != nil {
+		return x.AiPools
+	}
+	return nil
+}
+
+// AIPool is one labeled ai-worker pool the edge dials at call time.
+// Carried inside WorkerHello (per-edge inventory) so meshctl learns
+// the AI topology from the same heartbeat plane it learns the edge
+// topology from.
+type AIPool struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// label matches Pipeline.ai_worker_label routing. Empty string is
+	// the default pool.
+	Label string `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	// addr is the dial target the edge uses: <host>:<port> of the
+	// ai-worker's Pipeline gRPC server. meshctl reuses this to call
+	// Pipeline.GetCapability for the voice/llm catalogue.
+	Addr string `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
+	// max_concurrent mirrors the edge-side semaphore cap on this
+	// pool. Surfaced to the dashboard so operators see headroom per
+	// pool. Zero = unbounded.
+	MaxConcurrent uint32 `protobuf:"varint,3,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AIPool) Reset() {
+	*x = AIPool{}
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AIPool) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AIPool) ProtoMessage() {}
+
+func (x *AIPool) ProtoReflect() protoreflect.Message {
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AIPool.ProtoReflect.Descriptor instead.
+func (*AIPool) Descriptor() ([]byte, []int) {
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *AIPool) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *AIPool) GetAddr() string {
+	if x != nil {
+		return x.Addr
+	}
+	return ""
+}
+
+func (x *AIPool) GetMaxConcurrent() uint32 {
+	if x != nil {
+		return x.MaxConcurrent
+	}
+	return 0
+}
+
 type WorkerAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
@@ -2551,7 +2642,7 @@ type WorkerAck struct {
 
 func (x *WorkerAck) Reset() {
 	*x = WorkerAck{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[33]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2563,7 +2654,7 @@ func (x *WorkerAck) String() string {
 func (*WorkerAck) ProtoMessage() {}
 
 func (x *WorkerAck) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[33]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2576,7 +2667,7 @@ func (x *WorkerAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerAck.ProtoReflect.Descriptor instead.
 func (*WorkerAck) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{33}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *WorkerAck) GetAccepted() bool {
@@ -2613,7 +2704,7 @@ type CallEvent struct {
 
 func (x *CallEvent) Reset() {
 	*x = CallEvent{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[34]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2625,7 +2716,7 @@ func (x *CallEvent) String() string {
 func (*CallEvent) ProtoMessage() {}
 
 func (x *CallEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[34]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2638,7 +2729,7 @@ func (x *CallEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallEvent.ProtoReflect.Descriptor instead.
 func (*CallEvent) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{34}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *CallEvent) GetInternalCallId() string {
@@ -2794,7 +2885,7 @@ type DialogAction struct {
 
 func (x *DialogAction) Reset() {
 	*x = DialogAction{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[35]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2806,7 +2897,7 @@ func (x *DialogAction) String() string {
 func (*DialogAction) ProtoMessage() {}
 
 func (x *DialogAction) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[35]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2819,7 +2910,7 @@ func (x *DialogAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DialogAction.ProtoReflect.Descriptor instead.
 func (*DialogAction) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{35}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DialogAction) GetKind() isDialogAction_Kind {
@@ -2864,7 +2955,7 @@ type DialogHangup struct {
 
 func (x *DialogHangup) Reset() {
 	*x = DialogHangup{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[36]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2876,7 +2967,7 @@ func (x *DialogHangup) String() string {
 func (*DialogHangup) ProtoMessage() {}
 
 func (x *DialogHangup) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[36]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2889,7 +2980,7 @@ func (x *DialogHangup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DialogHangup.ProtoReflect.Descriptor instead.
 func (*DialogHangup) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{36}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DialogHangup) GetReason() string {
@@ -2907,7 +2998,7 @@ type CallStarted struct {
 
 func (x *CallStarted) Reset() {
 	*x = CallStarted{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[37]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2919,7 +3010,7 @@ func (x *CallStarted) String() string {
 func (*CallStarted) ProtoMessage() {}
 
 func (x *CallStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[37]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2932,7 +3023,7 @@ func (x *CallStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallStarted.ProtoReflect.Descriptor instead.
 func (*CallStarted) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{37}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{38}
 }
 
 type CallAnswered struct {
@@ -2943,7 +3034,7 @@ type CallAnswered struct {
 
 func (x *CallAnswered) Reset() {
 	*x = CallAnswered{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[38]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2955,7 +3046,7 @@ func (x *CallAnswered) String() string {
 func (*CallAnswered) ProtoMessage() {}
 
 func (x *CallAnswered) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[38]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2968,7 +3059,7 @@ func (x *CallAnswered) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallAnswered.ProtoReflect.Descriptor instead.
 func (*CallAnswered) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{38}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{39}
 }
 
 type CallRecordingDone struct {
@@ -2990,7 +3081,7 @@ type CallRecordingDone struct {
 
 func (x *CallRecordingDone) Reset() {
 	*x = CallRecordingDone{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[39]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3002,7 +3093,7 @@ func (x *CallRecordingDone) String() string {
 func (*CallRecordingDone) ProtoMessage() {}
 
 func (x *CallRecordingDone) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[39]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3015,7 +3106,7 @@ func (x *CallRecordingDone) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallRecordingDone.ProtoReflect.Descriptor instead.
 func (*CallRecordingDone) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{39}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CallRecordingDone) GetUri() string {
@@ -3074,7 +3165,7 @@ type CallEnded struct {
 
 func (x *CallEnded) Reset() {
 	*x = CallEnded{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[40]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3086,7 +3177,7 @@ func (x *CallEnded) String() string {
 func (*CallEnded) ProtoMessage() {}
 
 func (x *CallEnded) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[40]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3099,7 +3190,7 @@ func (x *CallEnded) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallEnded.ProtoReflect.Descriptor instead.
 func (*CallEnded) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{40}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *CallEnded) GetReason() string {
@@ -3180,7 +3271,7 @@ type CallEventsAck struct {
 
 func (x *CallEventsAck) Reset() {
 	*x = CallEventsAck{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[41]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3192,7 +3283,7 @@ func (x *CallEventsAck) String() string {
 func (*CallEventsAck) ProtoMessage() {}
 
 func (x *CallEventsAck) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[41]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3205,7 +3296,7 @@ func (x *CallEventsAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallEventsAck.ProtoReflect.Descriptor instead.
 func (*CallEventsAck) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{41}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{42}
 }
 
 type AdminTapCallRequest struct {
@@ -3217,7 +3308,7 @@ type AdminTapCallRequest struct {
 
 func (x *AdminTapCallRequest) Reset() {
 	*x = AdminTapCallRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[42]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3229,7 +3320,7 @@ func (x *AdminTapCallRequest) String() string {
 func (*AdminTapCallRequest) ProtoMessage() {}
 
 func (x *AdminTapCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[42]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3242,7 +3333,7 @@ func (x *AdminTapCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminTapCallRequest.ProtoReflect.Descriptor instead.
 func (*AdminTapCallRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{42}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *AdminTapCallRequest) GetInternalCallId() string {
@@ -3262,7 +3353,7 @@ type SipTraceRequest struct {
 
 func (x *SipTraceRequest) Reset() {
 	*x = SipTraceRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[43]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3274,7 +3365,7 @@ func (x *SipTraceRequest) String() string {
 func (*SipTraceRequest) ProtoMessage() {}
 
 func (x *SipTraceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[43]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3287,7 +3378,7 @@ func (x *SipTraceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SipTraceRequest.ProtoReflect.Descriptor instead.
 func (*SipTraceRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{43}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SipTraceRequest) GetCallId() string {
@@ -3317,7 +3408,7 @@ type SipTraceMessage struct {
 
 func (x *SipTraceMessage) Reset() {
 	*x = SipTraceMessage{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[44]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3329,7 +3420,7 @@ func (x *SipTraceMessage) String() string {
 func (*SipTraceMessage) ProtoMessage() {}
 
 func (x *SipTraceMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[44]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3342,7 +3433,7 @@ func (x *SipTraceMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SipTraceMessage.ProtoReflect.Descriptor instead.
 func (*SipTraceMessage) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{44}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *SipTraceMessage) GetTsUnixNs() int64 {
@@ -3393,7 +3484,7 @@ type SubscribeEventsRequest struct {
 
 func (x *SubscribeEventsRequest) Reset() {
 	*x = SubscribeEventsRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[45]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3405,7 +3496,7 @@ func (x *SubscribeEventsRequest) String() string {
 func (*SubscribeEventsRequest) ProtoMessage() {}
 
 func (x *SubscribeEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[45]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3418,7 +3509,7 @@ func (x *SubscribeEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeEventsRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeEventsRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{45}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SubscribeEventsRequest) GetInternalCallId() string {
@@ -3442,7 +3533,7 @@ type ListCallsRequest struct {
 
 func (x *ListCallsRequest) Reset() {
 	*x = ListCallsRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[46]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3454,7 +3545,7 @@ func (x *ListCallsRequest) String() string {
 func (*ListCallsRequest) ProtoMessage() {}
 
 func (x *ListCallsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[46]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3467,7 +3558,7 @@ func (x *ListCallsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCallsRequest.ProtoReflect.Descriptor instead.
 func (*ListCallsRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{46}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ListCallsRequest) GetWorkerId() string {
@@ -3493,7 +3584,7 @@ type ListCallsResponse struct {
 
 func (x *ListCallsResponse) Reset() {
 	*x = ListCallsResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[47]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3505,7 +3596,7 @@ func (x *ListCallsResponse) String() string {
 func (*ListCallsResponse) ProtoMessage() {}
 
 func (x *ListCallsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[47]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3518,7 +3609,7 @@ func (x *ListCallsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCallsResponse.ProtoReflect.Descriptor instead.
 func (*ListCallsResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{47}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListCallsResponse) GetCalls() []*CallSummary {
@@ -3545,7 +3636,7 @@ type CallSummary struct {
 
 func (x *CallSummary) Reset() {
 	*x = CallSummary{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[48]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3557,7 +3648,7 @@ func (x *CallSummary) String() string {
 func (*CallSummary) ProtoMessage() {}
 
 func (x *CallSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[48]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3570,7 +3661,7 @@ func (x *CallSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallSummary.ProtoReflect.Descriptor instead.
 func (*CallSummary) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{48}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CallSummary) GetInternalCallId() string {
@@ -3645,7 +3736,7 @@ type DescribeCallRequest struct {
 
 func (x *DescribeCallRequest) Reset() {
 	*x = DescribeCallRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[49]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3657,7 +3748,7 @@ func (x *DescribeCallRequest) String() string {
 func (*DescribeCallRequest) ProtoMessage() {}
 
 func (x *DescribeCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[49]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3670,7 +3761,7 @@ func (x *DescribeCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeCallRequest.ProtoReflect.Descriptor instead.
 func (*DescribeCallRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{49}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *DescribeCallRequest) GetInternalCallId() string {
@@ -3690,7 +3781,7 @@ type CallDetail struct {
 
 func (x *CallDetail) Reset() {
 	*x = CallDetail{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[50]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3702,7 +3793,7 @@ func (x *CallDetail) String() string {
 func (*CallDetail) ProtoMessage() {}
 
 func (x *CallDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[50]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3715,7 +3806,7 @@ func (x *CallDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallDetail.ProtoReflect.Descriptor instead.
 func (*CallDetail) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{50}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *CallDetail) GetCall() *CallSummary {
@@ -3743,7 +3834,7 @@ type ListWorkersRequest struct {
 
 func (x *ListWorkersRequest) Reset() {
 	*x = ListWorkersRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[51]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3755,7 +3846,7 @@ func (x *ListWorkersRequest) String() string {
 func (*ListWorkersRequest) ProtoMessage() {}
 
 func (x *ListWorkersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[51]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3768,7 +3859,7 @@ func (x *ListWorkersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkersRequest.ProtoReflect.Descriptor instead.
 func (*ListWorkersRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{51}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ListWorkersRequest) GetIncludeStale() bool {
@@ -3787,7 +3878,7 @@ type ListWorkersResponse struct {
 
 func (x *ListWorkersResponse) Reset() {
 	*x = ListWorkersResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[52]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3799,7 +3890,7 @@ func (x *ListWorkersResponse) String() string {
 func (*ListWorkersResponse) ProtoMessage() {}
 
 func (x *ListWorkersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[52]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3812,7 +3903,7 @@ func (x *ListWorkersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkersResponse.ProtoReflect.Descriptor instead.
 func (*ListWorkersResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{52}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ListWorkersResponse) GetWorkers() []*WorkerSummary {
@@ -3847,7 +3938,7 @@ type WorkerSummary struct {
 
 func (x *WorkerSummary) Reset() {
 	*x = WorkerSummary{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[53]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3859,7 +3950,7 @@ func (x *WorkerSummary) String() string {
 func (*WorkerSummary) ProtoMessage() {}
 
 func (x *WorkerSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[53]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3872,7 +3963,7 @@ func (x *WorkerSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerSummary.ProtoReflect.Descriptor instead.
 func (*WorkerSummary) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{53}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *WorkerSummary) GetId() string {
@@ -3961,7 +4052,7 @@ type DescribeWorkerRequest struct {
 
 func (x *DescribeWorkerRequest) Reset() {
 	*x = DescribeWorkerRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[54]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3973,7 +4064,7 @@ func (x *DescribeWorkerRequest) String() string {
 func (*DescribeWorkerRequest) ProtoMessage() {}
 
 func (x *DescribeWorkerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[54]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3986,7 +4077,7 @@ func (x *DescribeWorkerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeWorkerRequest.ProtoReflect.Descriptor instead.
 func (*DescribeWorkerRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{54}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *DescribeWorkerRequest) GetWorkerId() string {
@@ -4006,7 +4097,7 @@ type WorkerDetail struct {
 
 func (x *WorkerDetail) Reset() {
 	*x = WorkerDetail{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[55]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4018,7 +4109,7 @@ func (x *WorkerDetail) String() string {
 func (*WorkerDetail) ProtoMessage() {}
 
 func (x *WorkerDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[55]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4031,7 +4122,7 @@ func (x *WorkerDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerDetail.ProtoReflect.Descriptor instead.
 func (*WorkerDetail) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{55}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *WorkerDetail) GetWorker() *WorkerSummary {
@@ -4063,7 +4154,7 @@ type ForceReleaseCallRequest struct {
 
 func (x *ForceReleaseCallRequest) Reset() {
 	*x = ForceReleaseCallRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[56]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4075,7 +4166,7 @@ func (x *ForceReleaseCallRequest) String() string {
 func (*ForceReleaseCallRequest) ProtoMessage() {}
 
 func (x *ForceReleaseCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[56]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4088,7 +4179,7 @@ func (x *ForceReleaseCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForceReleaseCallRequest.ProtoReflect.Descriptor instead.
 func (*ForceReleaseCallRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{56}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ForceReleaseCallRequest) GetInternalCallId() string {
@@ -4115,7 +4206,7 @@ type ForceReleaseCallResponse struct {
 
 func (x *ForceReleaseCallResponse) Reset() {
 	*x = ForceReleaseCallResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[57]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4127,7 +4218,7 @@ func (x *ForceReleaseCallResponse) String() string {
 func (*ForceReleaseCallResponse) ProtoMessage() {}
 
 func (x *ForceReleaseCallResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[57]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4140,7 +4231,7 @@ func (x *ForceReleaseCallResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForceReleaseCallResponse.ProtoReflect.Descriptor instead.
 func (*ForceReleaseCallResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{57}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ForceReleaseCallResponse) GetFound() bool {
@@ -4170,7 +4261,7 @@ type DrainWorkerRequest struct {
 
 func (x *DrainWorkerRequest) Reset() {
 	*x = DrainWorkerRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[58]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4182,7 +4273,7 @@ func (x *DrainWorkerRequest) String() string {
 func (*DrainWorkerRequest) ProtoMessage() {}
 
 func (x *DrainWorkerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[58]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4195,7 +4286,7 @@ func (x *DrainWorkerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainWorkerRequest.ProtoReflect.Descriptor instead.
 func (*DrainWorkerRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{58}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *DrainWorkerRequest) GetWorkerId() string {
@@ -4214,7 +4305,7 @@ type DrainWorkerResponse struct {
 
 func (x *DrainWorkerResponse) Reset() {
 	*x = DrainWorkerResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[59]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4226,7 +4317,7 @@ func (x *DrainWorkerResponse) String() string {
 func (*DrainWorkerResponse) ProtoMessage() {}
 
 func (x *DrainWorkerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[59]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4239,7 +4330,7 @@ func (x *DrainWorkerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainWorkerResponse.ProtoReflect.Descriptor instead.
 func (*DrainWorkerResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{59}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *DrainWorkerResponse) GetFound() bool {
@@ -4273,7 +4364,7 @@ type TransferCallRequest struct {
 
 func (x *TransferCallRequest) Reset() {
 	*x = TransferCallRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[60]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4285,7 +4376,7 @@ func (x *TransferCallRequest) String() string {
 func (*TransferCallRequest) ProtoMessage() {}
 
 func (x *TransferCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[60]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4298,7 +4389,7 @@ func (x *TransferCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferCallRequest.ProtoReflect.Descriptor instead.
 func (*TransferCallRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{60}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *TransferCallRequest) GetInternalCallId() string {
@@ -4347,7 +4438,7 @@ type TransferCallResponse struct {
 
 func (x *TransferCallResponse) Reset() {
 	*x = TransferCallResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[61]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4359,7 +4450,7 @@ func (x *TransferCallResponse) String() string {
 func (*TransferCallResponse) ProtoMessage() {}
 
 func (x *TransferCallResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[61]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4372,7 +4463,7 @@ func (x *TransferCallResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferCallResponse.ProtoReflect.Descriptor instead.
 func (*TransferCallResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{61}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *TransferCallResponse) GetSipStatus() uint32 {
@@ -4406,7 +4497,7 @@ type DescribeTrunkRequest struct {
 
 func (x *DescribeTrunkRequest) Reset() {
 	*x = DescribeTrunkRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[62]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4418,7 +4509,7 @@ func (x *DescribeTrunkRequest) String() string {
 func (*DescribeTrunkRequest) ProtoMessage() {}
 
 func (x *DescribeTrunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[62]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4431,7 +4522,7 @@ func (x *DescribeTrunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeTrunkRequest.ProtoReflect.Descriptor instead.
 func (*DescribeTrunkRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{62}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *DescribeTrunkRequest) GetTrunkId() string {
@@ -4474,7 +4565,7 @@ type DescribeTrunkResponse struct {
 
 func (x *DescribeTrunkResponse) Reset() {
 	*x = DescribeTrunkResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[63]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4486,7 +4577,7 @@ func (x *DescribeTrunkResponse) String() string {
 func (*DescribeTrunkResponse) ProtoMessage() {}
 
 func (x *DescribeTrunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[63]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4499,7 +4590,7 @@ func (x *DescribeTrunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeTrunkResponse.ProtoReflect.Descriptor instead.
 func (*DescribeTrunkResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{63}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *DescribeTrunkResponse) GetTrunkId() string {
@@ -4621,7 +4712,7 @@ type OriginateCallRequest struct {
 
 func (x *OriginateCallRequest) Reset() {
 	*x = OriginateCallRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[64]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4633,7 +4724,7 @@ func (x *OriginateCallRequest) String() string {
 func (*OriginateCallRequest) ProtoMessage() {}
 
 func (x *OriginateCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[64]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4646,7 +4737,7 @@ func (x *OriginateCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OriginateCallRequest.ProtoReflect.Descriptor instead.
 func (*OriginateCallRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{64}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *OriginateCallRequest) GetCallee() string {
@@ -4722,7 +4813,7 @@ type OriginateCallResponse struct {
 
 func (x *OriginateCallResponse) Reset() {
 	*x = OriginateCallResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[65]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4734,7 +4825,7 @@ func (x *OriginateCallResponse) String() string {
 func (*OriginateCallResponse) ProtoMessage() {}
 
 func (x *OriginateCallResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[65]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4747,7 +4838,7 @@ func (x *OriginateCallResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OriginateCallResponse.ProtoReflect.Descriptor instead.
 func (*OriginateCallResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{65}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *OriginateCallResponse) GetInternalCallId() string {
@@ -4789,7 +4880,7 @@ type GetCPSStatusRequest struct {
 
 func (x *GetCPSStatusRequest) Reset() {
 	*x = GetCPSStatusRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[66]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4801,7 +4892,7 @@ func (x *GetCPSStatusRequest) String() string {
 func (*GetCPSStatusRequest) ProtoMessage() {}
 
 func (x *GetCPSStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[66]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4814,7 +4905,7 @@ func (x *GetCPSStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCPSStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetCPSStatusRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{66}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{67}
 }
 
 // CPSBucket reports one carrier IP's CPS governor state.
@@ -4834,7 +4925,7 @@ type CPSBucket struct {
 
 func (x *CPSBucket) Reset() {
 	*x = CPSBucket{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[67]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4846,7 +4937,7 @@ func (x *CPSBucket) String() string {
 func (*CPSBucket) ProtoMessage() {}
 
 func (x *CPSBucket) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[67]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4859,7 +4950,7 @@ func (x *CPSBucket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CPSBucket.ProtoReflect.Descriptor instead.
 func (*CPSBucket) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{67}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *CPSBucket) GetKey() string {
@@ -4900,7 +4991,7 @@ type ConcurrencyBucket struct {
 
 func (x *ConcurrencyBucket) Reset() {
 	*x = ConcurrencyBucket{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[68]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4912,7 +5003,7 @@ func (x *ConcurrencyBucket) String() string {
 func (*ConcurrencyBucket) ProtoMessage() {}
 
 func (x *ConcurrencyBucket) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[68]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4925,7 +5016,7 @@ func (x *ConcurrencyBucket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConcurrencyBucket.ProtoReflect.Descriptor instead.
 func (*ConcurrencyBucket) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{68}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ConcurrencyBucket) GetKey() string {
@@ -4970,7 +5061,7 @@ type GetCPSStatusResponse struct {
 
 func (x *GetCPSStatusResponse) Reset() {
 	*x = GetCPSStatusResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[69]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4982,7 +5073,7 @@ func (x *GetCPSStatusResponse) String() string {
 func (*GetCPSStatusResponse) ProtoMessage() {}
 
 func (x *GetCPSStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[69]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4995,7 +5086,7 @@ func (x *GetCPSStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCPSStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetCPSStatusResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{69}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *GetCPSStatusResponse) GetCps() []*CPSBucket {
@@ -5023,7 +5114,7 @@ type GetCapabilityRequest struct {
 
 func (x *GetCapabilityRequest) Reset() {
 	*x = GetCapabilityRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[70]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5035,7 +5126,7 @@ func (x *GetCapabilityRequest) String() string {
 func (*GetCapabilityRequest) ProtoMessage() {}
 
 func (x *GetCapabilityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[70]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5048,7 +5139,7 @@ func (x *GetCapabilityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapabilityRequest.ProtoReflect.Descriptor instead.
 func (*GetCapabilityRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{70}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{71}
 }
 
 // Capability is one ai-worker pod's self-description: which voices
@@ -5082,7 +5173,7 @@ type Capability struct {
 
 func (x *Capability) Reset() {
 	*x = Capability{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[71]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5094,7 +5185,7 @@ func (x *Capability) String() string {
 func (*Capability) ProtoMessage() {}
 
 func (x *Capability) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[71]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5107,7 +5198,7 @@ func (x *Capability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Capability.ProtoReflect.Descriptor instead.
 func (*Capability) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{71}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *Capability) GetPoolLabel() string {
@@ -5174,7 +5265,7 @@ type Voice struct {
 
 func (x *Voice) Reset() {
 	*x = Voice{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[72]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5186,7 +5277,7 @@ func (x *Voice) String() string {
 func (*Voice) ProtoMessage() {}
 
 func (x *Voice) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[72]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5199,7 +5290,7 @@ func (x *Voice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Voice.ProtoReflect.Descriptor instead.
 func (*Voice) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{72}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *Voice) GetId() string {
@@ -5251,7 +5342,7 @@ type SynthesizeRequest struct {
 
 func (x *SynthesizeRequest) Reset() {
 	*x = SynthesizeRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[73]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5263,7 +5354,7 @@ func (x *SynthesizeRequest) String() string {
 func (*SynthesizeRequest) ProtoMessage() {}
 
 func (x *SynthesizeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[73]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5276,7 +5367,7 @@ func (x *SynthesizeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{73}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *SynthesizeRequest) GetText() string {
@@ -5326,7 +5417,7 @@ type SynthesizeResponse struct {
 
 func (x *SynthesizeResponse) Reset() {
 	*x = SynthesizeResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[74]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5338,7 +5429,7 @@ func (x *SynthesizeResponse) String() string {
 func (*SynthesizeResponse) ProtoMessage() {}
 
 func (x *SynthesizeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[74]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5351,7 +5442,7 @@ func (x *SynthesizeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{74}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *SynthesizeResponse) GetAudio() []byte {
@@ -5412,7 +5503,7 @@ type AudioFrame struct {
 
 func (x *AudioFrame) Reset() {
 	*x = AudioFrame{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[75]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5424,7 +5515,7 @@ func (x *AudioFrame) String() string {
 func (*AudioFrame) ProtoMessage() {}
 
 func (x *AudioFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[75]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5437,7 +5528,7 @@ func (x *AudioFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AudioFrame.ProtoReflect.Descriptor instead.
 func (*AudioFrame) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{75}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AudioFrame) GetPcmS16Le() []byte {
@@ -5485,7 +5576,7 @@ type TranscribeResponse struct {
 
 func (x *TranscribeResponse) Reset() {
 	*x = TranscribeResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[76]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5497,7 +5588,7 @@ func (x *TranscribeResponse) String() string {
 func (*TranscribeResponse) ProtoMessage() {}
 
 func (x *TranscribeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[76]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5510,7 +5601,7 @@ func (x *TranscribeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeResponse.ProtoReflect.Descriptor instead.
 func (*TranscribeResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{76}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *TranscribeResponse) GetText() string {
@@ -5560,7 +5651,7 @@ type CallDTMF struct {
 
 func (x *CallDTMF) Reset() {
 	*x = CallDTMF{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[77]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5572,7 +5663,7 @@ func (x *CallDTMF) String() string {
 func (*CallDTMF) ProtoMessage() {}
 
 func (x *CallDTMF) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[77]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5585,7 +5676,7 @@ func (x *CallDTMF) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallDTMF.ProtoReflect.Descriptor instead.
 func (*CallDTMF) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{77}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *CallDTMF) GetDigit() string {
@@ -5637,7 +5728,7 @@ type CallTranscript struct {
 
 func (x *CallTranscript) Reset() {
 	*x = CallTranscript{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[78]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5649,7 +5740,7 @@ func (x *CallTranscript) String() string {
 func (*CallTranscript) ProtoMessage() {}
 
 func (x *CallTranscript) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[78]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5662,7 +5753,7 @@ func (x *CallTranscript) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallTranscript.ProtoReflect.Descriptor instead.
 func (*CallTranscript) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{78}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *CallTranscript) GetText() string {
@@ -5720,7 +5811,7 @@ type ChatMessage struct {
 
 func (x *ChatMessage) Reset() {
 	*x = ChatMessage{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[79]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5732,7 +5823,7 @@ func (x *ChatMessage) String() string {
 func (*ChatMessage) ProtoMessage() {}
 
 func (x *ChatMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[79]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5745,7 +5836,7 @@ func (x *ChatMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatMessage.ProtoReflect.Descriptor instead.
 func (*ChatMessage) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{79}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *ChatMessage) GetRole() ChatMessage_Role {
@@ -5800,7 +5891,7 @@ type ChatRequest struct {
 
 func (x *ChatRequest) Reset() {
 	*x = ChatRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[80]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5812,7 +5903,7 @@ func (x *ChatRequest) String() string {
 func (*ChatRequest) ProtoMessage() {}
 
 func (x *ChatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[80]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5825,7 +5916,7 @@ func (x *ChatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatRequest.ProtoReflect.Descriptor instead.
 func (*ChatRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{80}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *ChatRequest) GetMessages() []*ChatMessage {
@@ -5896,7 +5987,7 @@ type ChatResponse struct {
 
 func (x *ChatResponse) Reset() {
 	*x = ChatResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[81]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5908,7 +5999,7 @@ func (x *ChatResponse) String() string {
 func (*ChatResponse) ProtoMessage() {}
 
 func (x *ChatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[81]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5921,7 +6012,7 @@ func (x *ChatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatResponse.ProtoReflect.Descriptor instead.
 func (*ChatResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{81}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ChatResponse) GetText() string {
@@ -5998,7 +6089,7 @@ type ChatStreamChunk struct {
 
 func (x *ChatStreamChunk) Reset() {
 	*x = ChatStreamChunk{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[82]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6010,7 +6101,7 @@ func (x *ChatStreamChunk) String() string {
 func (*ChatStreamChunk) ProtoMessage() {}
 
 func (x *ChatStreamChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[82]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6023,7 +6114,7 @@ func (x *ChatStreamChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatStreamChunk.ProtoReflect.Descriptor instead.
 func (*ChatStreamChunk) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{82}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ChatStreamChunk) GetText() string {
@@ -6118,7 +6209,7 @@ type ConfigSet struct {
 
 func (x *ConfigSet) Reset() {
 	*x = ConfigSet{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[83]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6130,7 +6221,7 @@ func (x *ConfigSet) String() string {
 func (*ConfigSet) ProtoMessage() {}
 
 func (x *ConfigSet) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[83]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6143,7 +6234,7 @@ func (x *ConfigSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigSet.ProtoReflect.Descriptor instead.
 func (*ConfigSet) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{83}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ConfigSet) GetGroup() string {
@@ -6205,7 +6296,7 @@ type ApplyConfigSetRequest struct {
 
 func (x *ApplyConfigSetRequest) Reset() {
 	*x = ApplyConfigSetRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[84]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6217,7 +6308,7 @@ func (x *ApplyConfigSetRequest) String() string {
 func (*ApplyConfigSetRequest) ProtoMessage() {}
 
 func (x *ApplyConfigSetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[84]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6230,7 +6321,7 @@ func (x *ApplyConfigSetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyConfigSetRequest.ProtoReflect.Descriptor instead.
 func (*ApplyConfigSetRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{84}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ApplyConfigSetRequest) GetGroup() string {
@@ -6271,7 +6362,7 @@ type ApplyConfigSetResponse struct {
 
 func (x *ApplyConfigSetResponse) Reset() {
 	*x = ApplyConfigSetResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[85]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6283,7 +6374,7 @@ func (x *ApplyConfigSetResponse) String() string {
 func (*ApplyConfigSetResponse) ProtoMessage() {}
 
 func (x *ApplyConfigSetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[85]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6296,7 +6387,7 @@ func (x *ApplyConfigSetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyConfigSetResponse.ProtoReflect.Descriptor instead.
 func (*ApplyConfigSetResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{85}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ApplyConfigSetResponse) GetVersion() uint64 {
@@ -6325,7 +6416,7 @@ type GetConfigSetRequest struct {
 
 func (x *GetConfigSetRequest) Reset() {
 	*x = GetConfigSetRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[86]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6337,7 +6428,7 @@ func (x *GetConfigSetRequest) String() string {
 func (*GetConfigSetRequest) ProtoMessage() {}
 
 func (x *GetConfigSetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[86]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6350,7 +6441,7 @@ func (x *GetConfigSetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigSetRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigSetRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{86}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *GetConfigSetRequest) GetGroup() string {
@@ -6378,7 +6469,7 @@ type ListVersionsRequest struct {
 
 func (x *ListVersionsRequest) Reset() {
 	*x = ListVersionsRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[87]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6390,7 +6481,7 @@ func (x *ListVersionsRequest) String() string {
 func (*ListVersionsRequest) ProtoMessage() {}
 
 func (x *ListVersionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[87]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6403,7 +6494,7 @@ func (x *ListVersionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVersionsRequest.ProtoReflect.Descriptor instead.
 func (*ListVersionsRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{87}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *ListVersionsRequest) GetGroup() string {
@@ -6431,7 +6522,7 @@ type ListVersionsResponse struct {
 
 func (x *ListVersionsResponse) Reset() {
 	*x = ListVersionsResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[88]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6443,7 +6534,7 @@ func (x *ListVersionsResponse) String() string {
 func (*ListVersionsResponse) ProtoMessage() {}
 
 func (x *ListVersionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[88]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6456,7 +6547,7 @@ func (x *ListVersionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVersionsResponse.ProtoReflect.Descriptor instead.
 func (*ListVersionsResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{88}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *ListVersionsResponse) GetVersions() []*ConfigSetMeta {
@@ -6480,7 +6571,7 @@ type ConfigSetMeta struct {
 
 func (x *ConfigSetMeta) Reset() {
 	*x = ConfigSetMeta{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[89]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6492,7 +6583,7 @@ func (x *ConfigSetMeta) String() string {
 func (*ConfigSetMeta) ProtoMessage() {}
 
 func (x *ConfigSetMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[89]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6505,7 +6596,7 @@ func (x *ConfigSetMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigSetMeta.ProtoReflect.Descriptor instead.
 func (*ConfigSetMeta) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{89}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *ConfigSetMeta) GetGroup() string {
@@ -6561,7 +6652,7 @@ type RollbackConfigSetRequest struct {
 
 func (x *RollbackConfigSetRequest) Reset() {
 	*x = RollbackConfigSetRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[90]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6573,7 +6664,7 @@ func (x *RollbackConfigSetRequest) String() string {
 func (*RollbackConfigSetRequest) ProtoMessage() {}
 
 func (x *RollbackConfigSetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[90]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6586,7 +6677,7 @@ func (x *RollbackConfigSetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackConfigSetRequest.ProtoReflect.Descriptor instead.
 func (*RollbackConfigSetRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{90}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *RollbackConfigSetRequest) GetGroup() string {
@@ -6624,7 +6715,7 @@ type SubscribeConfigRequest struct {
 
 func (x *SubscribeConfigRequest) Reset() {
 	*x = SubscribeConfigRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[91]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6636,7 +6727,7 @@ func (x *SubscribeConfigRequest) String() string {
 func (*SubscribeConfigRequest) ProtoMessage() {}
 
 func (x *SubscribeConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[91]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6649,7 +6740,7 @@ func (x *SubscribeConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeConfigRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeConfigRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{91}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *SubscribeConfigRequest) GetGroup() string {
@@ -6674,7 +6765,7 @@ type GetClientEndpointsRequest struct {
 
 func (x *GetClientEndpointsRequest) Reset() {
 	*x = GetClientEndpointsRequest{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[92]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6686,7 +6777,7 @@ func (x *GetClientEndpointsRequest) String() string {
 func (*GetClientEndpointsRequest) ProtoMessage() {}
 
 func (x *GetClientEndpointsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[92]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6699,7 +6790,7 @@ func (x *GetClientEndpointsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClientEndpointsRequest.ProtoReflect.Descriptor instead.
 func (*GetClientEndpointsRequest) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{92}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{93}
 }
 
 // ClientEndpoints carries everything a browser/native softphone
@@ -6765,7 +6856,7 @@ type GetClientEndpointsResponse struct {
 
 func (x *GetClientEndpointsResponse) Reset() {
 	*x = GetClientEndpointsResponse{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[93]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6777,7 +6868,7 @@ func (x *GetClientEndpointsResponse) String() string {
 func (*GetClientEndpointsResponse) ProtoMessage() {}
 
 func (x *GetClientEndpointsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[93]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6790,7 +6881,7 @@ func (x *GetClientEndpointsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClientEndpointsResponse.ProtoReflect.Descriptor instead.
 func (*GetClientEndpointsResponse) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{93}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *GetClientEndpointsResponse) GetSipWssUrl() string {
@@ -6859,7 +6950,7 @@ type IceServer struct {
 
 func (x *IceServer) Reset() {
 	*x = IceServer{}
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[94]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6871,7 +6962,7 @@ func (x *IceServer) String() string {
 func (*IceServer) ProtoMessage() {}
 
 func (x *IceServer) ProtoReflect() protoreflect.Message {
-	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[94]
+	mi := &file_sipmesh_v1_sipmesh_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6884,7 +6975,7 @@ func (x *IceServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IceServer.ProtoReflect.Descriptor instead.
 func (*IceServer) Descriptor() ([]byte, []int) {
-	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{94}
+	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *IceServer) GetUrls() []string {
@@ -7045,7 +7136,7 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"rtp_packet\x18\x03 \x01(\fR\trtpPacket\x12\x1b\n" +
 	"\tpeer_addr\x18\x04 \x01(\tR\bpeerAddr\x12\x1d\n" +
 	"\n" +
-	"local_port\x18\x05 \x01(\rR\tlocalPort\"\xff\x02\n" +
+	"local_port\x18\x05 \x01(\rR\tlocalPort\"\xae\x03\n" +
 	"\vWorkerHello\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1b\n" +
 	"\tgrpc_addr\x18\x02 \x01(\tR\bgrpcAddr\x12\"\n" +
@@ -7060,7 +7151,12 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\fis_heartbeat\x18\t \x01(\bR\visHeartbeat\x12\x1e\n" +
 	"\vlast_rtt_ns\x18\n" +
 	" \x01(\x03R\tlastRttNs\x12'\n" +
-	"\x10rtp_public_ip_v6\x18\v \x01(\tR\rrtpPublicIpV6\"L\n" +
+	"\x10rtp_public_ip_v6\x18\v \x01(\tR\rrtpPublicIpV6\x12-\n" +
+	"\bai_pools\x18\f \x03(\v2\x12.sipmesh.v1.AIPoolR\aaiPools\"Y\n" +
+	"\x06AIPool\x12\x14\n" +
+	"\x05label\x18\x01 \x01(\tR\x05label\x12\x12\n" +
+	"\x04addr\x18\x02 \x01(\tR\x04addr\x12%\n" +
+	"\x0emax_concurrent\x18\x03 \x01(\rR\rmaxConcurrent\"L\n" +
 	"\tWorkerAck\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12#\n" +
 	"\rreject_reason\x18\x02 \x01(\tR\frejectReason\"\xf8\x03\n" +
@@ -7483,7 +7579,7 @@ func file_sipmesh_v1_sipmesh_proto_rawDescGZIP() []byte {
 }
 
 var file_sipmesh_v1_sipmesh_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_sipmesh_v1_sipmesh_proto_msgTypes = make([]protoimpl.MessageInfo, 96)
+var file_sipmesh_v1_sipmesh_proto_msgTypes = make([]protoimpl.MessageInfo, 97)
 var file_sipmesh_v1_sipmesh_proto_goTypes = []any{
 	(HoldMode)(0),                          // 0: sipmesh.v1.HoldMode
 	(CallFlow)(0),                          // 1: sipmesh.v1.CallFlow
@@ -7526,196 +7622,198 @@ var file_sipmesh_v1_sipmesh_proto_goTypes = []any{
 	(*TapCallRequest)(nil),                 // 38: sipmesh.v1.TapCallRequest
 	(*TapFrame)(nil),                       // 39: sipmesh.v1.TapFrame
 	(*WorkerHello)(nil),                    // 40: sipmesh.v1.WorkerHello
-	(*WorkerAck)(nil),                      // 41: sipmesh.v1.WorkerAck
-	(*CallEvent)(nil),                      // 42: sipmesh.v1.CallEvent
-	(*DialogAction)(nil),                   // 43: sipmesh.v1.DialogAction
-	(*DialogHangup)(nil),                   // 44: sipmesh.v1.DialogHangup
-	(*CallStarted)(nil),                    // 45: sipmesh.v1.CallStarted
-	(*CallAnswered)(nil),                   // 46: sipmesh.v1.CallAnswered
-	(*CallRecordingDone)(nil),              // 47: sipmesh.v1.CallRecordingDone
-	(*CallEnded)(nil),                      // 48: sipmesh.v1.CallEnded
-	(*CallEventsAck)(nil),                  // 49: sipmesh.v1.CallEventsAck
-	(*AdminTapCallRequest)(nil),            // 50: sipmesh.v1.AdminTapCallRequest
-	(*SipTraceRequest)(nil),                // 51: sipmesh.v1.SipTraceRequest
-	(*SipTraceMessage)(nil),                // 52: sipmesh.v1.SipTraceMessage
-	(*SubscribeEventsRequest)(nil),         // 53: sipmesh.v1.SubscribeEventsRequest
-	(*ListCallsRequest)(nil),               // 54: sipmesh.v1.ListCallsRequest
-	(*ListCallsResponse)(nil),              // 55: sipmesh.v1.ListCallsResponse
-	(*CallSummary)(nil),                    // 56: sipmesh.v1.CallSummary
-	(*DescribeCallRequest)(nil),            // 57: sipmesh.v1.DescribeCallRequest
-	(*CallDetail)(nil),                     // 58: sipmesh.v1.CallDetail
-	(*ListWorkersRequest)(nil),             // 59: sipmesh.v1.ListWorkersRequest
-	(*ListWorkersResponse)(nil),            // 60: sipmesh.v1.ListWorkersResponse
-	(*WorkerSummary)(nil),                  // 61: sipmesh.v1.WorkerSummary
-	(*DescribeWorkerRequest)(nil),          // 62: sipmesh.v1.DescribeWorkerRequest
-	(*WorkerDetail)(nil),                   // 63: sipmesh.v1.WorkerDetail
-	(*ForceReleaseCallRequest)(nil),        // 64: sipmesh.v1.ForceReleaseCallRequest
-	(*ForceReleaseCallResponse)(nil),       // 65: sipmesh.v1.ForceReleaseCallResponse
-	(*DrainWorkerRequest)(nil),             // 66: sipmesh.v1.DrainWorkerRequest
-	(*DrainWorkerResponse)(nil),            // 67: sipmesh.v1.DrainWorkerResponse
-	(*TransferCallRequest)(nil),            // 68: sipmesh.v1.TransferCallRequest
-	(*TransferCallResponse)(nil),           // 69: sipmesh.v1.TransferCallResponse
-	(*DescribeTrunkRequest)(nil),           // 70: sipmesh.v1.DescribeTrunkRequest
-	(*DescribeTrunkResponse)(nil),          // 71: sipmesh.v1.DescribeTrunkResponse
-	(*OriginateCallRequest)(nil),           // 72: sipmesh.v1.OriginateCallRequest
-	(*OriginateCallResponse)(nil),          // 73: sipmesh.v1.OriginateCallResponse
-	(*GetCPSStatusRequest)(nil),            // 74: sipmesh.v1.GetCPSStatusRequest
-	(*CPSBucket)(nil),                      // 75: sipmesh.v1.CPSBucket
-	(*ConcurrencyBucket)(nil),              // 76: sipmesh.v1.ConcurrencyBucket
-	(*GetCPSStatusResponse)(nil),           // 77: sipmesh.v1.GetCPSStatusResponse
-	(*GetCapabilityRequest)(nil),           // 78: sipmesh.v1.GetCapabilityRequest
-	(*Capability)(nil),                     // 79: sipmesh.v1.Capability
-	(*Voice)(nil),                          // 80: sipmesh.v1.Voice
-	(*SynthesizeRequest)(nil),              // 81: sipmesh.v1.SynthesizeRequest
-	(*SynthesizeResponse)(nil),             // 82: sipmesh.v1.SynthesizeResponse
-	(*AudioFrame)(nil),                     // 83: sipmesh.v1.AudioFrame
-	(*TranscribeResponse)(nil),             // 84: sipmesh.v1.TranscribeResponse
-	(*CallDTMF)(nil),                       // 85: sipmesh.v1.CallDTMF
-	(*CallTranscript)(nil),                 // 86: sipmesh.v1.CallTranscript
-	(*ChatMessage)(nil),                    // 87: sipmesh.v1.ChatMessage
-	(*ChatRequest)(nil),                    // 88: sipmesh.v1.ChatRequest
-	(*ChatResponse)(nil),                   // 89: sipmesh.v1.ChatResponse
-	(*ChatStreamChunk)(nil),                // 90: sipmesh.v1.ChatStreamChunk
-	(*ConfigSet)(nil),                      // 91: sipmesh.v1.ConfigSet
-	(*ApplyConfigSetRequest)(nil),          // 92: sipmesh.v1.ApplyConfigSetRequest
-	(*ApplyConfigSetResponse)(nil),         // 93: sipmesh.v1.ApplyConfigSetResponse
-	(*GetConfigSetRequest)(nil),            // 94: sipmesh.v1.GetConfigSetRequest
-	(*ListVersionsRequest)(nil),            // 95: sipmesh.v1.ListVersionsRequest
-	(*ListVersionsResponse)(nil),           // 96: sipmesh.v1.ListVersionsResponse
-	(*ConfigSetMeta)(nil),                  // 97: sipmesh.v1.ConfigSetMeta
-	(*RollbackConfigSetRequest)(nil),       // 98: sipmesh.v1.RollbackConfigSetRequest
-	(*SubscribeConfigRequest)(nil),         // 99: sipmesh.v1.SubscribeConfigRequest
-	(*GetClientEndpointsRequest)(nil),      // 100: sipmesh.v1.GetClientEndpointsRequest
-	(*GetClientEndpointsResponse)(nil),     // 101: sipmesh.v1.GetClientEndpointsResponse
-	(*IceServer)(nil),                      // 102: sipmesh.v1.IceServer
-	nil,                                    // 103: sipmesh.v1.CallEnded.CustomFieldsEntry
-	(*timestamppb.Timestamp)(nil),          // 104: google.protobuf.Timestamp
+	(*AIPool)(nil),                         // 41: sipmesh.v1.AIPool
+	(*WorkerAck)(nil),                      // 42: sipmesh.v1.WorkerAck
+	(*CallEvent)(nil),                      // 43: sipmesh.v1.CallEvent
+	(*DialogAction)(nil),                   // 44: sipmesh.v1.DialogAction
+	(*DialogHangup)(nil),                   // 45: sipmesh.v1.DialogHangup
+	(*CallStarted)(nil),                    // 46: sipmesh.v1.CallStarted
+	(*CallAnswered)(nil),                   // 47: sipmesh.v1.CallAnswered
+	(*CallRecordingDone)(nil),              // 48: sipmesh.v1.CallRecordingDone
+	(*CallEnded)(nil),                      // 49: sipmesh.v1.CallEnded
+	(*CallEventsAck)(nil),                  // 50: sipmesh.v1.CallEventsAck
+	(*AdminTapCallRequest)(nil),            // 51: sipmesh.v1.AdminTapCallRequest
+	(*SipTraceRequest)(nil),                // 52: sipmesh.v1.SipTraceRequest
+	(*SipTraceMessage)(nil),                // 53: sipmesh.v1.SipTraceMessage
+	(*SubscribeEventsRequest)(nil),         // 54: sipmesh.v1.SubscribeEventsRequest
+	(*ListCallsRequest)(nil),               // 55: sipmesh.v1.ListCallsRequest
+	(*ListCallsResponse)(nil),              // 56: sipmesh.v1.ListCallsResponse
+	(*CallSummary)(nil),                    // 57: sipmesh.v1.CallSummary
+	(*DescribeCallRequest)(nil),            // 58: sipmesh.v1.DescribeCallRequest
+	(*CallDetail)(nil),                     // 59: sipmesh.v1.CallDetail
+	(*ListWorkersRequest)(nil),             // 60: sipmesh.v1.ListWorkersRequest
+	(*ListWorkersResponse)(nil),            // 61: sipmesh.v1.ListWorkersResponse
+	(*WorkerSummary)(nil),                  // 62: sipmesh.v1.WorkerSummary
+	(*DescribeWorkerRequest)(nil),          // 63: sipmesh.v1.DescribeWorkerRequest
+	(*WorkerDetail)(nil),                   // 64: sipmesh.v1.WorkerDetail
+	(*ForceReleaseCallRequest)(nil),        // 65: sipmesh.v1.ForceReleaseCallRequest
+	(*ForceReleaseCallResponse)(nil),       // 66: sipmesh.v1.ForceReleaseCallResponse
+	(*DrainWorkerRequest)(nil),             // 67: sipmesh.v1.DrainWorkerRequest
+	(*DrainWorkerResponse)(nil),            // 68: sipmesh.v1.DrainWorkerResponse
+	(*TransferCallRequest)(nil),            // 69: sipmesh.v1.TransferCallRequest
+	(*TransferCallResponse)(nil),           // 70: sipmesh.v1.TransferCallResponse
+	(*DescribeTrunkRequest)(nil),           // 71: sipmesh.v1.DescribeTrunkRequest
+	(*DescribeTrunkResponse)(nil),          // 72: sipmesh.v1.DescribeTrunkResponse
+	(*OriginateCallRequest)(nil),           // 73: sipmesh.v1.OriginateCallRequest
+	(*OriginateCallResponse)(nil),          // 74: sipmesh.v1.OriginateCallResponse
+	(*GetCPSStatusRequest)(nil),            // 75: sipmesh.v1.GetCPSStatusRequest
+	(*CPSBucket)(nil),                      // 76: sipmesh.v1.CPSBucket
+	(*ConcurrencyBucket)(nil),              // 77: sipmesh.v1.ConcurrencyBucket
+	(*GetCPSStatusResponse)(nil),           // 78: sipmesh.v1.GetCPSStatusResponse
+	(*GetCapabilityRequest)(nil),           // 79: sipmesh.v1.GetCapabilityRequest
+	(*Capability)(nil),                     // 80: sipmesh.v1.Capability
+	(*Voice)(nil),                          // 81: sipmesh.v1.Voice
+	(*SynthesizeRequest)(nil),              // 82: sipmesh.v1.SynthesizeRequest
+	(*SynthesizeResponse)(nil),             // 83: sipmesh.v1.SynthesizeResponse
+	(*AudioFrame)(nil),                     // 84: sipmesh.v1.AudioFrame
+	(*TranscribeResponse)(nil),             // 85: sipmesh.v1.TranscribeResponse
+	(*CallDTMF)(nil),                       // 86: sipmesh.v1.CallDTMF
+	(*CallTranscript)(nil),                 // 87: sipmesh.v1.CallTranscript
+	(*ChatMessage)(nil),                    // 88: sipmesh.v1.ChatMessage
+	(*ChatRequest)(nil),                    // 89: sipmesh.v1.ChatRequest
+	(*ChatResponse)(nil),                   // 90: sipmesh.v1.ChatResponse
+	(*ChatStreamChunk)(nil),                // 91: sipmesh.v1.ChatStreamChunk
+	(*ConfigSet)(nil),                      // 92: sipmesh.v1.ConfigSet
+	(*ApplyConfigSetRequest)(nil),          // 93: sipmesh.v1.ApplyConfigSetRequest
+	(*ApplyConfigSetResponse)(nil),         // 94: sipmesh.v1.ApplyConfigSetResponse
+	(*GetConfigSetRequest)(nil),            // 95: sipmesh.v1.GetConfigSetRequest
+	(*ListVersionsRequest)(nil),            // 96: sipmesh.v1.ListVersionsRequest
+	(*ListVersionsResponse)(nil),           // 97: sipmesh.v1.ListVersionsResponse
+	(*ConfigSetMeta)(nil),                  // 98: sipmesh.v1.ConfigSetMeta
+	(*RollbackConfigSetRequest)(nil),       // 99: sipmesh.v1.RollbackConfigSetRequest
+	(*SubscribeConfigRequest)(nil),         // 100: sipmesh.v1.SubscribeConfigRequest
+	(*GetClientEndpointsRequest)(nil),      // 101: sipmesh.v1.GetClientEndpointsRequest
+	(*GetClientEndpointsResponse)(nil),     // 102: sipmesh.v1.GetClientEndpointsResponse
+	(*IceServer)(nil),                      // 103: sipmesh.v1.IceServer
+	nil,                                    // 104: sipmesh.v1.CallEnded.CustomFieldsEntry
+	(*timestamppb.Timestamp)(nil),          // 105: google.protobuf.Timestamp
 }
 var file_sipmesh_v1_sipmesh_proto_depIdxs = []int32{
-	104, // 0: sipmesh.v1.PublishCallSignalRequest.ts:type_name -> google.protobuf.Timestamp
+	105, // 0: sipmesh.v1.PublishCallSignalRequest.ts:type_name -> google.protobuf.Timestamp
 	5,   // 1: sipmesh.v1.PublishCallSignalRequest.kind:type_name -> sipmesh.v1.PublishCallSignalRequest.Kind
 	0,   // 2: sipmesh.v1.SetCallHoldRequest.mode:type_name -> sipmesh.v1.HoldMode
 	1,   // 3: sipmesh.v1.StartCallRequest.flow:type_name -> sipmesh.v1.CallFlow
 	0,   // 4: sipmesh.v1.EdgeSetCallHoldRequest.mode:type_name -> sipmesh.v1.HoldMode
 	2,   // 5: sipmesh.v1.TapFrame.direction:type_name -> sipmesh.v1.TapDirection
-	104, // 6: sipmesh.v1.CallEvent.ts:type_name -> google.protobuf.Timestamp
-	45,  // 7: sipmesh.v1.CallEvent.started:type_name -> sipmesh.v1.CallStarted
-	46,  // 8: sipmesh.v1.CallEvent.answered:type_name -> sipmesh.v1.CallAnswered
-	47,  // 9: sipmesh.v1.CallEvent.recording_done:type_name -> sipmesh.v1.CallRecordingDone
-	48,  // 10: sipmesh.v1.CallEvent.ended:type_name -> sipmesh.v1.CallEnded
-	86,  // 11: sipmesh.v1.CallEvent.transcript:type_name -> sipmesh.v1.CallTranscript
-	85,  // 12: sipmesh.v1.CallEvent.dtmf:type_name -> sipmesh.v1.CallDTMF
-	43,  // 13: sipmesh.v1.CallEvent.dialog_action:type_name -> sipmesh.v1.DialogAction
-	44,  // 14: sipmesh.v1.DialogAction.hangup:type_name -> sipmesh.v1.DialogHangup
-	103, // 15: sipmesh.v1.CallEnded.custom_fields:type_name -> sipmesh.v1.CallEnded.CustomFieldsEntry
-	3,   // 16: sipmesh.v1.SipTraceMessage.direction:type_name -> sipmesh.v1.SipDirection
-	56,  // 17: sipmesh.v1.ListCallsResponse.calls:type_name -> sipmesh.v1.CallSummary
-	56,  // 18: sipmesh.v1.CallDetail.call:type_name -> sipmesh.v1.CallSummary
-	61,  // 19: sipmesh.v1.CallDetail.worker:type_name -> sipmesh.v1.WorkerSummary
-	61,  // 20: sipmesh.v1.ListWorkersResponse.workers:type_name -> sipmesh.v1.WorkerSummary
-	61,  // 21: sipmesh.v1.WorkerDetail.worker:type_name -> sipmesh.v1.WorkerSummary
-	6,   // 22: sipmesh.v1.TransferCallRequest.mode:type_name -> sipmesh.v1.TransferCallRequest.Mode
-	75,  // 23: sipmesh.v1.GetCPSStatusResponse.cps:type_name -> sipmesh.v1.CPSBucket
-	76,  // 24: sipmesh.v1.GetCPSStatusResponse.concurrency:type_name -> sipmesh.v1.ConcurrencyBucket
-	80,  // 25: sipmesh.v1.Capability.voices:type_name -> sipmesh.v1.Voice
-	4,   // 26: sipmesh.v1.SynthesizeRequest.codec:type_name -> sipmesh.v1.Codec
-	7,   // 27: sipmesh.v1.ChatMessage.role:type_name -> sipmesh.v1.ChatMessage.Role
-	87,  // 28: sipmesh.v1.ChatRequest.messages:type_name -> sipmesh.v1.ChatMessage
-	4,   // 29: sipmesh.v1.ChatRequest.output_codec:type_name -> sipmesh.v1.Codec
-	4,   // 30: sipmesh.v1.ChatStreamChunk.audio_codec:type_name -> sipmesh.v1.Codec
-	104, // 31: sipmesh.v1.ConfigSet.created_at:type_name -> google.protobuf.Timestamp
-	97,  // 32: sipmesh.v1.ListVersionsResponse.versions:type_name -> sipmesh.v1.ConfigSetMeta
-	104, // 33: sipmesh.v1.ConfigSetMeta.created_at:type_name -> google.protobuf.Timestamp
-	102, // 34: sipmesh.v1.GetClientEndpointsResponse.ice_servers:type_name -> sipmesh.v1.IceServer
-	8,   // 35: sipmesh.v1.Scheduler.AllocateCall:input_type -> sipmesh.v1.AllocateCallRequest
-	10,  // 36: sipmesh.v1.Scheduler.ReleaseCall:input_type -> sipmesh.v1.ReleaseCallRequest
-	14,  // 37: sipmesh.v1.Scheduler.SetCallRemote:input_type -> sipmesh.v1.SetCallRemoteRequest
-	11,  // 38: sipmesh.v1.Scheduler.PublishCallSignal:input_type -> sipmesh.v1.PublishCallSignalRequest
-	16,  // 39: sipmesh.v1.Scheduler.BridgeCalls:input_type -> sipmesh.v1.BridgeCallsRequest
-	18,  // 40: sipmesh.v1.Scheduler.SetCallHold:input_type -> sipmesh.v1.SetCallHoldRequest
-	20,  // 41: sipmesh.v1.Scheduler.SetCallCustomField:input_type -> sipmesh.v1.SetCallCustomFieldRequest
-	22,  // 42: sipmesh.v1.Scheduler.SwitchCallCodec:input_type -> sipmesh.v1.SwitchCallCodecRequest
-	24,  // 43: sipmesh.v1.Edge.StartCall:input_type -> sipmesh.v1.StartCallRequest
-	26,  // 44: sipmesh.v1.Edge.CancelCall:input_type -> sipmesh.v1.CancelCallRequest
-	28,  // 45: sipmesh.v1.Edge.SetRemote:input_type -> sipmesh.v1.SetRemoteRequest
-	38,  // 46: sipmesh.v1.Edge.TapCall:input_type -> sipmesh.v1.TapCallRequest
-	30,  // 47: sipmesh.v1.Edge.BridgeCalls:input_type -> sipmesh.v1.EdgeBridgeCallsRequest
-	32,  // 48: sipmesh.v1.Edge.SetCallHold:input_type -> sipmesh.v1.EdgeSetCallHoldRequest
-	34,  // 49: sipmesh.v1.Edge.SwitchCallCodec:input_type -> sipmesh.v1.EdgeSwitchCallCodecRequest
-	36,  // 50: sipmesh.v1.Edge.SetCallCustomField:input_type -> sipmesh.v1.EdgeSetCallCustomFieldRequest
-	40,  // 51: sipmesh.v1.Registry.Register:input_type -> sipmesh.v1.WorkerHello
-	42,  // 52: sipmesh.v1.Registry.CallEvents:input_type -> sipmesh.v1.CallEvent
-	54,  // 53: sipmesh.v1.Admin.ListCalls:input_type -> sipmesh.v1.ListCallsRequest
-	57,  // 54: sipmesh.v1.Admin.DescribeCall:input_type -> sipmesh.v1.DescribeCallRequest
-	59,  // 55: sipmesh.v1.Admin.ListWorkers:input_type -> sipmesh.v1.ListWorkersRequest
-	62,  // 56: sipmesh.v1.Admin.DescribeWorker:input_type -> sipmesh.v1.DescribeWorkerRequest
-	53,  // 57: sipmesh.v1.Admin.SubscribeEvents:input_type -> sipmesh.v1.SubscribeEventsRequest
-	64,  // 58: sipmesh.v1.Admin.ForceReleaseCall:input_type -> sipmesh.v1.ForceReleaseCallRequest
-	66,  // 59: sipmesh.v1.Admin.DrainWorker:input_type -> sipmesh.v1.DrainWorkerRequest
-	50,  // 60: sipmesh.v1.Admin.TapCall:input_type -> sipmesh.v1.AdminTapCallRequest
-	51,  // 61: sipmesh.v1.SipTrace.Subscribe:input_type -> sipmesh.v1.SipTraceRequest
-	72,  // 62: sipmesh.v1.ProxyControl.OriginateCall:input_type -> sipmesh.v1.OriginateCallRequest
-	74,  // 63: sipmesh.v1.ProxyControl.GetCPSStatus:input_type -> sipmesh.v1.GetCPSStatusRequest
-	100, // 64: sipmesh.v1.ProxyControl.GetClientEndpoints:input_type -> sipmesh.v1.GetClientEndpointsRequest
-	70,  // 65: sipmesh.v1.ProxyControl.DescribeTrunk:input_type -> sipmesh.v1.DescribeTrunkRequest
-	68,  // 66: sipmesh.v1.ProxyControl.TransferCall:input_type -> sipmesh.v1.TransferCallRequest
-	81,  // 67: sipmesh.v1.Pipeline.Synthesize:input_type -> sipmesh.v1.SynthesizeRequest
-	83,  // 68: sipmesh.v1.Pipeline.Transcribe:input_type -> sipmesh.v1.AudioFrame
-	78,  // 69: sipmesh.v1.Pipeline.GetCapability:input_type -> sipmesh.v1.GetCapabilityRequest
-	88,  // 70: sipmesh.v1.Pipeline.Chat:input_type -> sipmesh.v1.ChatRequest
-	88,  // 71: sipmesh.v1.Pipeline.ChatStream:input_type -> sipmesh.v1.ChatRequest
-	92,  // 72: sipmesh.v1.Config.ApplyConfigSet:input_type -> sipmesh.v1.ApplyConfigSetRequest
-	94,  // 73: sipmesh.v1.Config.GetConfigSet:input_type -> sipmesh.v1.GetConfigSetRequest
-	95,  // 74: sipmesh.v1.Config.ListVersions:input_type -> sipmesh.v1.ListVersionsRequest
-	98,  // 75: sipmesh.v1.Config.RollbackConfigSet:input_type -> sipmesh.v1.RollbackConfigSetRequest
-	99,  // 76: sipmesh.v1.Config.Subscribe:input_type -> sipmesh.v1.SubscribeConfigRequest
-	9,   // 77: sipmesh.v1.Scheduler.AllocateCall:output_type -> sipmesh.v1.AllocateCallResponse
-	13,  // 78: sipmesh.v1.Scheduler.ReleaseCall:output_type -> sipmesh.v1.ReleaseCallResponse
-	15,  // 79: sipmesh.v1.Scheduler.SetCallRemote:output_type -> sipmesh.v1.SetCallRemoteResponse
-	12,  // 80: sipmesh.v1.Scheduler.PublishCallSignal:output_type -> sipmesh.v1.PublishCallSignalResponse
-	17,  // 81: sipmesh.v1.Scheduler.BridgeCalls:output_type -> sipmesh.v1.BridgeCallsResponse
-	19,  // 82: sipmesh.v1.Scheduler.SetCallHold:output_type -> sipmesh.v1.SetCallHoldResponse
-	21,  // 83: sipmesh.v1.Scheduler.SetCallCustomField:output_type -> sipmesh.v1.SetCallCustomFieldResponse
-	23,  // 84: sipmesh.v1.Scheduler.SwitchCallCodec:output_type -> sipmesh.v1.SwitchCallCodecResponse
-	25,  // 85: sipmesh.v1.Edge.StartCall:output_type -> sipmesh.v1.StartCallResponse
-	27,  // 86: sipmesh.v1.Edge.CancelCall:output_type -> sipmesh.v1.CancelCallResponse
-	29,  // 87: sipmesh.v1.Edge.SetRemote:output_type -> sipmesh.v1.SetRemoteResponse
-	39,  // 88: sipmesh.v1.Edge.TapCall:output_type -> sipmesh.v1.TapFrame
-	31,  // 89: sipmesh.v1.Edge.BridgeCalls:output_type -> sipmesh.v1.EdgeBridgeCallsResponse
-	33,  // 90: sipmesh.v1.Edge.SetCallHold:output_type -> sipmesh.v1.EdgeSetCallHoldResponse
-	35,  // 91: sipmesh.v1.Edge.SwitchCallCodec:output_type -> sipmesh.v1.EdgeSwitchCallCodecResponse
-	37,  // 92: sipmesh.v1.Edge.SetCallCustomField:output_type -> sipmesh.v1.EdgeSetCallCustomFieldResponse
-	41,  // 93: sipmesh.v1.Registry.Register:output_type -> sipmesh.v1.WorkerAck
-	49,  // 94: sipmesh.v1.Registry.CallEvents:output_type -> sipmesh.v1.CallEventsAck
-	55,  // 95: sipmesh.v1.Admin.ListCalls:output_type -> sipmesh.v1.ListCallsResponse
-	58,  // 96: sipmesh.v1.Admin.DescribeCall:output_type -> sipmesh.v1.CallDetail
-	60,  // 97: sipmesh.v1.Admin.ListWorkers:output_type -> sipmesh.v1.ListWorkersResponse
-	63,  // 98: sipmesh.v1.Admin.DescribeWorker:output_type -> sipmesh.v1.WorkerDetail
-	42,  // 99: sipmesh.v1.Admin.SubscribeEvents:output_type -> sipmesh.v1.CallEvent
-	65,  // 100: sipmesh.v1.Admin.ForceReleaseCall:output_type -> sipmesh.v1.ForceReleaseCallResponse
-	67,  // 101: sipmesh.v1.Admin.DrainWorker:output_type -> sipmesh.v1.DrainWorkerResponse
-	39,  // 102: sipmesh.v1.Admin.TapCall:output_type -> sipmesh.v1.TapFrame
-	52,  // 103: sipmesh.v1.SipTrace.Subscribe:output_type -> sipmesh.v1.SipTraceMessage
-	73,  // 104: sipmesh.v1.ProxyControl.OriginateCall:output_type -> sipmesh.v1.OriginateCallResponse
-	77,  // 105: sipmesh.v1.ProxyControl.GetCPSStatus:output_type -> sipmesh.v1.GetCPSStatusResponse
-	101, // 106: sipmesh.v1.ProxyControl.GetClientEndpoints:output_type -> sipmesh.v1.GetClientEndpointsResponse
-	71,  // 107: sipmesh.v1.ProxyControl.DescribeTrunk:output_type -> sipmesh.v1.DescribeTrunkResponse
-	69,  // 108: sipmesh.v1.ProxyControl.TransferCall:output_type -> sipmesh.v1.TransferCallResponse
-	82,  // 109: sipmesh.v1.Pipeline.Synthesize:output_type -> sipmesh.v1.SynthesizeResponse
-	84,  // 110: sipmesh.v1.Pipeline.Transcribe:output_type -> sipmesh.v1.TranscribeResponse
-	79,  // 111: sipmesh.v1.Pipeline.GetCapability:output_type -> sipmesh.v1.Capability
-	89,  // 112: sipmesh.v1.Pipeline.Chat:output_type -> sipmesh.v1.ChatResponse
-	90,  // 113: sipmesh.v1.Pipeline.ChatStream:output_type -> sipmesh.v1.ChatStreamChunk
-	93,  // 114: sipmesh.v1.Config.ApplyConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
-	91,  // 115: sipmesh.v1.Config.GetConfigSet:output_type -> sipmesh.v1.ConfigSet
-	96,  // 116: sipmesh.v1.Config.ListVersions:output_type -> sipmesh.v1.ListVersionsResponse
-	93,  // 117: sipmesh.v1.Config.RollbackConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
-	91,  // 118: sipmesh.v1.Config.Subscribe:output_type -> sipmesh.v1.ConfigSet
-	77,  // [77:119] is the sub-list for method output_type
-	35,  // [35:77] is the sub-list for method input_type
-	35,  // [35:35] is the sub-list for extension type_name
-	35,  // [35:35] is the sub-list for extension extendee
-	0,   // [0:35] is the sub-list for field type_name
+	41,  // 6: sipmesh.v1.WorkerHello.ai_pools:type_name -> sipmesh.v1.AIPool
+	105, // 7: sipmesh.v1.CallEvent.ts:type_name -> google.protobuf.Timestamp
+	46,  // 8: sipmesh.v1.CallEvent.started:type_name -> sipmesh.v1.CallStarted
+	47,  // 9: sipmesh.v1.CallEvent.answered:type_name -> sipmesh.v1.CallAnswered
+	48,  // 10: sipmesh.v1.CallEvent.recording_done:type_name -> sipmesh.v1.CallRecordingDone
+	49,  // 11: sipmesh.v1.CallEvent.ended:type_name -> sipmesh.v1.CallEnded
+	87,  // 12: sipmesh.v1.CallEvent.transcript:type_name -> sipmesh.v1.CallTranscript
+	86,  // 13: sipmesh.v1.CallEvent.dtmf:type_name -> sipmesh.v1.CallDTMF
+	44,  // 14: sipmesh.v1.CallEvent.dialog_action:type_name -> sipmesh.v1.DialogAction
+	45,  // 15: sipmesh.v1.DialogAction.hangup:type_name -> sipmesh.v1.DialogHangup
+	104, // 16: sipmesh.v1.CallEnded.custom_fields:type_name -> sipmesh.v1.CallEnded.CustomFieldsEntry
+	3,   // 17: sipmesh.v1.SipTraceMessage.direction:type_name -> sipmesh.v1.SipDirection
+	57,  // 18: sipmesh.v1.ListCallsResponse.calls:type_name -> sipmesh.v1.CallSummary
+	57,  // 19: sipmesh.v1.CallDetail.call:type_name -> sipmesh.v1.CallSummary
+	62,  // 20: sipmesh.v1.CallDetail.worker:type_name -> sipmesh.v1.WorkerSummary
+	62,  // 21: sipmesh.v1.ListWorkersResponse.workers:type_name -> sipmesh.v1.WorkerSummary
+	62,  // 22: sipmesh.v1.WorkerDetail.worker:type_name -> sipmesh.v1.WorkerSummary
+	6,   // 23: sipmesh.v1.TransferCallRequest.mode:type_name -> sipmesh.v1.TransferCallRequest.Mode
+	76,  // 24: sipmesh.v1.GetCPSStatusResponse.cps:type_name -> sipmesh.v1.CPSBucket
+	77,  // 25: sipmesh.v1.GetCPSStatusResponse.concurrency:type_name -> sipmesh.v1.ConcurrencyBucket
+	81,  // 26: sipmesh.v1.Capability.voices:type_name -> sipmesh.v1.Voice
+	4,   // 27: sipmesh.v1.SynthesizeRequest.codec:type_name -> sipmesh.v1.Codec
+	7,   // 28: sipmesh.v1.ChatMessage.role:type_name -> sipmesh.v1.ChatMessage.Role
+	88,  // 29: sipmesh.v1.ChatRequest.messages:type_name -> sipmesh.v1.ChatMessage
+	4,   // 30: sipmesh.v1.ChatRequest.output_codec:type_name -> sipmesh.v1.Codec
+	4,   // 31: sipmesh.v1.ChatStreamChunk.audio_codec:type_name -> sipmesh.v1.Codec
+	105, // 32: sipmesh.v1.ConfigSet.created_at:type_name -> google.protobuf.Timestamp
+	98,  // 33: sipmesh.v1.ListVersionsResponse.versions:type_name -> sipmesh.v1.ConfigSetMeta
+	105, // 34: sipmesh.v1.ConfigSetMeta.created_at:type_name -> google.protobuf.Timestamp
+	103, // 35: sipmesh.v1.GetClientEndpointsResponse.ice_servers:type_name -> sipmesh.v1.IceServer
+	8,   // 36: sipmesh.v1.Scheduler.AllocateCall:input_type -> sipmesh.v1.AllocateCallRequest
+	10,  // 37: sipmesh.v1.Scheduler.ReleaseCall:input_type -> sipmesh.v1.ReleaseCallRequest
+	14,  // 38: sipmesh.v1.Scheduler.SetCallRemote:input_type -> sipmesh.v1.SetCallRemoteRequest
+	11,  // 39: sipmesh.v1.Scheduler.PublishCallSignal:input_type -> sipmesh.v1.PublishCallSignalRequest
+	16,  // 40: sipmesh.v1.Scheduler.BridgeCalls:input_type -> sipmesh.v1.BridgeCallsRequest
+	18,  // 41: sipmesh.v1.Scheduler.SetCallHold:input_type -> sipmesh.v1.SetCallHoldRequest
+	20,  // 42: sipmesh.v1.Scheduler.SetCallCustomField:input_type -> sipmesh.v1.SetCallCustomFieldRequest
+	22,  // 43: sipmesh.v1.Scheduler.SwitchCallCodec:input_type -> sipmesh.v1.SwitchCallCodecRequest
+	24,  // 44: sipmesh.v1.Edge.StartCall:input_type -> sipmesh.v1.StartCallRequest
+	26,  // 45: sipmesh.v1.Edge.CancelCall:input_type -> sipmesh.v1.CancelCallRequest
+	28,  // 46: sipmesh.v1.Edge.SetRemote:input_type -> sipmesh.v1.SetRemoteRequest
+	38,  // 47: sipmesh.v1.Edge.TapCall:input_type -> sipmesh.v1.TapCallRequest
+	30,  // 48: sipmesh.v1.Edge.BridgeCalls:input_type -> sipmesh.v1.EdgeBridgeCallsRequest
+	32,  // 49: sipmesh.v1.Edge.SetCallHold:input_type -> sipmesh.v1.EdgeSetCallHoldRequest
+	34,  // 50: sipmesh.v1.Edge.SwitchCallCodec:input_type -> sipmesh.v1.EdgeSwitchCallCodecRequest
+	36,  // 51: sipmesh.v1.Edge.SetCallCustomField:input_type -> sipmesh.v1.EdgeSetCallCustomFieldRequest
+	40,  // 52: sipmesh.v1.Registry.Register:input_type -> sipmesh.v1.WorkerHello
+	43,  // 53: sipmesh.v1.Registry.CallEvents:input_type -> sipmesh.v1.CallEvent
+	55,  // 54: sipmesh.v1.Admin.ListCalls:input_type -> sipmesh.v1.ListCallsRequest
+	58,  // 55: sipmesh.v1.Admin.DescribeCall:input_type -> sipmesh.v1.DescribeCallRequest
+	60,  // 56: sipmesh.v1.Admin.ListWorkers:input_type -> sipmesh.v1.ListWorkersRequest
+	63,  // 57: sipmesh.v1.Admin.DescribeWorker:input_type -> sipmesh.v1.DescribeWorkerRequest
+	54,  // 58: sipmesh.v1.Admin.SubscribeEvents:input_type -> sipmesh.v1.SubscribeEventsRequest
+	65,  // 59: sipmesh.v1.Admin.ForceReleaseCall:input_type -> sipmesh.v1.ForceReleaseCallRequest
+	67,  // 60: sipmesh.v1.Admin.DrainWorker:input_type -> sipmesh.v1.DrainWorkerRequest
+	51,  // 61: sipmesh.v1.Admin.TapCall:input_type -> sipmesh.v1.AdminTapCallRequest
+	52,  // 62: sipmesh.v1.SipTrace.Subscribe:input_type -> sipmesh.v1.SipTraceRequest
+	73,  // 63: sipmesh.v1.ProxyControl.OriginateCall:input_type -> sipmesh.v1.OriginateCallRequest
+	75,  // 64: sipmesh.v1.ProxyControl.GetCPSStatus:input_type -> sipmesh.v1.GetCPSStatusRequest
+	101, // 65: sipmesh.v1.ProxyControl.GetClientEndpoints:input_type -> sipmesh.v1.GetClientEndpointsRequest
+	71,  // 66: sipmesh.v1.ProxyControl.DescribeTrunk:input_type -> sipmesh.v1.DescribeTrunkRequest
+	69,  // 67: sipmesh.v1.ProxyControl.TransferCall:input_type -> sipmesh.v1.TransferCallRequest
+	82,  // 68: sipmesh.v1.Pipeline.Synthesize:input_type -> sipmesh.v1.SynthesizeRequest
+	84,  // 69: sipmesh.v1.Pipeline.Transcribe:input_type -> sipmesh.v1.AudioFrame
+	79,  // 70: sipmesh.v1.Pipeline.GetCapability:input_type -> sipmesh.v1.GetCapabilityRequest
+	89,  // 71: sipmesh.v1.Pipeline.Chat:input_type -> sipmesh.v1.ChatRequest
+	89,  // 72: sipmesh.v1.Pipeline.ChatStream:input_type -> sipmesh.v1.ChatRequest
+	93,  // 73: sipmesh.v1.Config.ApplyConfigSet:input_type -> sipmesh.v1.ApplyConfigSetRequest
+	95,  // 74: sipmesh.v1.Config.GetConfigSet:input_type -> sipmesh.v1.GetConfigSetRequest
+	96,  // 75: sipmesh.v1.Config.ListVersions:input_type -> sipmesh.v1.ListVersionsRequest
+	99,  // 76: sipmesh.v1.Config.RollbackConfigSet:input_type -> sipmesh.v1.RollbackConfigSetRequest
+	100, // 77: sipmesh.v1.Config.Subscribe:input_type -> sipmesh.v1.SubscribeConfigRequest
+	9,   // 78: sipmesh.v1.Scheduler.AllocateCall:output_type -> sipmesh.v1.AllocateCallResponse
+	13,  // 79: sipmesh.v1.Scheduler.ReleaseCall:output_type -> sipmesh.v1.ReleaseCallResponse
+	15,  // 80: sipmesh.v1.Scheduler.SetCallRemote:output_type -> sipmesh.v1.SetCallRemoteResponse
+	12,  // 81: sipmesh.v1.Scheduler.PublishCallSignal:output_type -> sipmesh.v1.PublishCallSignalResponse
+	17,  // 82: sipmesh.v1.Scheduler.BridgeCalls:output_type -> sipmesh.v1.BridgeCallsResponse
+	19,  // 83: sipmesh.v1.Scheduler.SetCallHold:output_type -> sipmesh.v1.SetCallHoldResponse
+	21,  // 84: sipmesh.v1.Scheduler.SetCallCustomField:output_type -> sipmesh.v1.SetCallCustomFieldResponse
+	23,  // 85: sipmesh.v1.Scheduler.SwitchCallCodec:output_type -> sipmesh.v1.SwitchCallCodecResponse
+	25,  // 86: sipmesh.v1.Edge.StartCall:output_type -> sipmesh.v1.StartCallResponse
+	27,  // 87: sipmesh.v1.Edge.CancelCall:output_type -> sipmesh.v1.CancelCallResponse
+	29,  // 88: sipmesh.v1.Edge.SetRemote:output_type -> sipmesh.v1.SetRemoteResponse
+	39,  // 89: sipmesh.v1.Edge.TapCall:output_type -> sipmesh.v1.TapFrame
+	31,  // 90: sipmesh.v1.Edge.BridgeCalls:output_type -> sipmesh.v1.EdgeBridgeCallsResponse
+	33,  // 91: sipmesh.v1.Edge.SetCallHold:output_type -> sipmesh.v1.EdgeSetCallHoldResponse
+	35,  // 92: sipmesh.v1.Edge.SwitchCallCodec:output_type -> sipmesh.v1.EdgeSwitchCallCodecResponse
+	37,  // 93: sipmesh.v1.Edge.SetCallCustomField:output_type -> sipmesh.v1.EdgeSetCallCustomFieldResponse
+	42,  // 94: sipmesh.v1.Registry.Register:output_type -> sipmesh.v1.WorkerAck
+	50,  // 95: sipmesh.v1.Registry.CallEvents:output_type -> sipmesh.v1.CallEventsAck
+	56,  // 96: sipmesh.v1.Admin.ListCalls:output_type -> sipmesh.v1.ListCallsResponse
+	59,  // 97: sipmesh.v1.Admin.DescribeCall:output_type -> sipmesh.v1.CallDetail
+	61,  // 98: sipmesh.v1.Admin.ListWorkers:output_type -> sipmesh.v1.ListWorkersResponse
+	64,  // 99: sipmesh.v1.Admin.DescribeWorker:output_type -> sipmesh.v1.WorkerDetail
+	43,  // 100: sipmesh.v1.Admin.SubscribeEvents:output_type -> sipmesh.v1.CallEvent
+	66,  // 101: sipmesh.v1.Admin.ForceReleaseCall:output_type -> sipmesh.v1.ForceReleaseCallResponse
+	68,  // 102: sipmesh.v1.Admin.DrainWorker:output_type -> sipmesh.v1.DrainWorkerResponse
+	39,  // 103: sipmesh.v1.Admin.TapCall:output_type -> sipmesh.v1.TapFrame
+	53,  // 104: sipmesh.v1.SipTrace.Subscribe:output_type -> sipmesh.v1.SipTraceMessage
+	74,  // 105: sipmesh.v1.ProxyControl.OriginateCall:output_type -> sipmesh.v1.OriginateCallResponse
+	78,  // 106: sipmesh.v1.ProxyControl.GetCPSStatus:output_type -> sipmesh.v1.GetCPSStatusResponse
+	102, // 107: sipmesh.v1.ProxyControl.GetClientEndpoints:output_type -> sipmesh.v1.GetClientEndpointsResponse
+	72,  // 108: sipmesh.v1.ProxyControl.DescribeTrunk:output_type -> sipmesh.v1.DescribeTrunkResponse
+	70,  // 109: sipmesh.v1.ProxyControl.TransferCall:output_type -> sipmesh.v1.TransferCallResponse
+	83,  // 110: sipmesh.v1.Pipeline.Synthesize:output_type -> sipmesh.v1.SynthesizeResponse
+	85,  // 111: sipmesh.v1.Pipeline.Transcribe:output_type -> sipmesh.v1.TranscribeResponse
+	80,  // 112: sipmesh.v1.Pipeline.GetCapability:output_type -> sipmesh.v1.Capability
+	90,  // 113: sipmesh.v1.Pipeline.Chat:output_type -> sipmesh.v1.ChatResponse
+	91,  // 114: sipmesh.v1.Pipeline.ChatStream:output_type -> sipmesh.v1.ChatStreamChunk
+	94,  // 115: sipmesh.v1.Config.ApplyConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
+	92,  // 116: sipmesh.v1.Config.GetConfigSet:output_type -> sipmesh.v1.ConfigSet
+	97,  // 117: sipmesh.v1.Config.ListVersions:output_type -> sipmesh.v1.ListVersionsResponse
+	94,  // 118: sipmesh.v1.Config.RollbackConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
+	92,  // 119: sipmesh.v1.Config.Subscribe:output_type -> sipmesh.v1.ConfigSet
+	78,  // [78:120] is the sub-list for method output_type
+	36,  // [36:78] is the sub-list for method input_type
+	36,  // [36:36] is the sub-list for extension type_name
+	36,  // [36:36] is the sub-list for extension extendee
+	0,   // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_sipmesh_v1_sipmesh_proto_init() }
@@ -7723,7 +7821,7 @@ func file_sipmesh_v1_sipmesh_proto_init() {
 	if File_sipmesh_v1_sipmesh_proto != nil {
 		return
 	}
-	file_sipmesh_v1_sipmesh_proto_msgTypes[34].OneofWrappers = []any{
+	file_sipmesh_v1_sipmesh_proto_msgTypes[35].OneofWrappers = []any{
 		(*CallEvent_Started)(nil),
 		(*CallEvent_Answered)(nil),
 		(*CallEvent_RecordingDone)(nil),
@@ -7732,7 +7830,7 @@ func file_sipmesh_v1_sipmesh_proto_init() {
 		(*CallEvent_Dtmf)(nil),
 		(*CallEvent_DialogAction)(nil),
 	}
-	file_sipmesh_v1_sipmesh_proto_msgTypes[35].OneofWrappers = []any{
+	file_sipmesh_v1_sipmesh_proto_msgTypes[36].OneofWrappers = []any{
 		(*DialogAction_Hangup)(nil),
 	}
 	type x struct{}
@@ -7741,7 +7839,7 @@ func file_sipmesh_v1_sipmesh_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sipmesh_v1_sipmesh_proto_rawDesc), len(file_sipmesh_v1_sipmesh_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   96,
+			NumMessages:   97,
 			NumExtensions: 0,
 			NumServices:   8,
 		},

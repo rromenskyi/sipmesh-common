@@ -1611,6 +1611,86 @@ message DrainWorkerRequest  { string id = 1; bool confirm = 2; }
 message DrainWorkerResponse { bool ok = 1; }
 
 // ============================================================
+// AI worker pools — capability discovery
+// ============================================================
+//
+// Distinct from WorkerSummaryV2 (RTP terminators / media-edge).
+// AI workers are gRPC pools that serve Synthesize / Transcribe /
+// Chat to media-edge during call processing. Pipelines route to
+// them via Pipeline.ai_worker_label.
+//
+// The dashboard needs to know which pools exist and what each can
+// produce (which TTS voices, which LLM models) so the pipeline
+// edit form can render correct dropdowns without hardcoding a
+// shadow catalog. ai-worker introspects its plugins at startup
+// (Piper: enumerate /voices/*.onnx; Google: list API; LLM: from
+// config) and reports the result via heartbeat → meshctl's
+// registry → ListAIWorkers() returns it to frontend.
+
+message VoiceInfo {
+  // id is the voice identifier the operator puts in
+  // Pipeline.voice_pools_by_language[lang].entries[].voice.
+  // Convention varies per plugin:
+  //   Piper:  underscore-style, e.g. "en_US-amy-medium"
+  //   Google: dash-style,       e.g. "en-US-Neural2-F"
+  string id = 1;
+  // language is the BCP-47 tag the voice speaks. Surfaced for
+  // dashboard filtering — the frontend groups voices by language
+  // before rendering the pool-aware dropdown inside
+  // voice_pools_by_language[lang].entries[].
+  string language = 2;
+  // gender is "F" / "M" / "N" / "" (empty when the plugin doesn't
+  // categorise). Optional helper for the dashboard's gender
+  // chip / icon.
+  string gender = 3;
+  // tier is a plugin-specific quality / cost hint:
+  //   Google: "Standard" / "Wavenet" / "Neural2" / "Studio" / "Chirp"
+  //   Piper:  "low" / "medium" / "high" — model quality variant
+  // Empty when the plugin doesn't distinguish. Pure display sugar.
+  string tier = 4;
+}
+
+message AIWorkerCapability {
+  // pool_label matches Pipeline.ai_worker_label that routes
+  // gRPC to this worker. Empty string = default pool.
+  string pool_label = 1;
+  // voices is the full set of voice IDs this worker's TTS plugin
+  // can synthesize. Discovered at ai-worker startup by enumerating
+  // its plugin (Piper: dir scan; Google: API). Pool entries with
+  // the same label MAY share or differ in this set if more than
+  // one replica was deployed with different plugin configs —
+  // dashboard should union them when rendering, but flag drift.
+  repeated VoiceInfo voices = 2;
+  // llm_models is the set of LLM model identifiers this worker
+  // can serve via Chat / ChatStream. Sourced from the worker's
+  // configured plugin (Ollama: model list; OpenAI: configured
+  // models; etc.). Optional — empty for TTS-only or STT-only
+  // pools.
+  repeated string llm_models = 3;
+  // max_concurrent is the worker's advertised concurrency cap
+  // (same semantics as media-edge WorkerSummaryV2.max_concurrent
+  // but per ai-worker pool). Frontend can show pool capacity.
+  uint32 max_concurrent = 4;
+  // active_workers is the number of pods currently registered
+  // under this pool_label (could be > 1 if HPA scaled). Useful
+  // for the dashboard's "pool healthy / pool empty" indicator.
+  uint32 active_workers = 5;
+  // last_heartbeat_iso — most-recent heartbeat across the pool's
+  // replicas (RFC3339). Frontend grays out the dropdown entry
+  // when stale > N minutes.
+  string last_heartbeat_iso = 6;
+}
+
+message ListAIWorkersRequest {}
+message ListAIWorkersResponse {
+  // workers is one entry per pool_label (already aggregated
+  // across replicas with the same label). Frontend doesn't see
+  // individual pod identity for ai-workers — only the pool's
+  // effective capability set.
+  repeated AIWorkerCapability workers = 1;
+}
+
+// ============================================================
 // Events + sip-trace streams
 // ============================================================
 
@@ -1676,10 +1756,18 @@ service OperatorAPI {
   rpc GetCall(GetCallRequest)               returns (CallDetail);
   rpc HangupCall(HangupCallRequest)         returns (HangupCallResponse);
 
-  // ----- Workers -----
+  // ----- Workers (media-edge RTP terminators) -----
   rpc ListWorkers(ListWorkersRequest) returns (ListWorkersResponse);
   rpc GetWorker(GetWorkerRequest)     returns (WorkerDetail);
   rpc DrainWorker(DrainWorkerRequest) returns (DrainWorkerResponse);
+
+  // ----- AI worker pools (TTS/STT/LLM capability discovery) -----
+  // Distinct registry from ListWorkers above (which is RTP edge).
+  // Aggregated per pool_label across replicas. Dashboard hits
+  // this on pipeline-edit-form load to render correct
+  // ai_worker_label + voice_pools_by_language dropdowns from
+  // live engine state instead of a hardcoded shadow catalog.
+  rpc ListAIWorkers(ListAIWorkersRequest) returns (ListAIWorkersResponse);
 
   // ----- Streams (server-streaming) -----
   rpc SubscribeEvents(SubscribeEventsRequest) returns (stream Event);

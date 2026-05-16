@@ -1055,6 +1055,18 @@ message GetCPSStatusResponse {
 service Pipeline {
   rpc Synthesize (SynthesizeRequest) returns (SynthesizeResponse);
   rpc Transcribe (stream AudioFrame) returns (stream TranscribeResponse);
+  // GetCapability — pull-on-demand introspection. ai-worker walks
+  // its TTS plugin's loaded voice set (Piper: process-resident
+  // ONNX voices; Google: cached voices.list response) + the LLM
+  // plugin's model id, returns the full catalogue in one unary.
+  // meshctl fans out this RPC across operator-configured ai-worker
+  // pool endpoints to build the OperatorAPI.ListAIWorkers response
+  // the dashboard pipeline-edit form consumes. The catalogue is
+  // static for the pod's lifetime (Piper/Google voices don't
+  // change mid-process), so meshctl caches per-pod for ~5 min to
+  // amortise the fanout cost. No registry write from ai-worker —
+  // pure read-only RPC.
+  rpc GetCapability (GetCapabilityRequest) returns (Capability);
   // Chat — single-shot text-in/text-out call to the configured LLM
   // backend (Ollama / Gemini today). The edge owns the multi-turn
   // history; the request carries the full conversation every time.
@@ -1078,6 +1090,47 @@ service Pipeline {
   // chat() and emitting one final ChatStreamChunk with the whole reply
   // — the edge's playback loop works uniformly regardless.
   rpc ChatStream (ChatRequest) returns (stream ChatStreamChunk);
+}
+
+// GetCapability request — no inputs today. Reserved as a message
+// type so future capability filters / version negotiation can land
+// without an RPC signature break.
+message GetCapabilityRequest {}
+
+// Capability is one ai-worker pod's self-description: which voices
+// its TTS plugin can synthesize today, which LLM model the chat
+// path is wired to, and how many concurrent gRPC workers the
+// process is sized for. meshctl aggregates per pool_label across
+// replicas (union over voices, dedup by id) when building
+// OperatorAPI.ListAIWorkers, so the dashboard sees one logical
+// entry per pool with the full voice catalogue available to it.
+//
+// pool_label is what Pipeline.ai_worker_label routes to; an empty
+// string is the default pool. The same label across replicas
+// implies the same plugin config (same TTS + LLM + voices) — if
+// operator configures otherwise, the meshctl union still produces
+// a valid superset, just slightly noisy.
+message Capability {
+  string pool_label                = 1;
+  repeated Voice voices            = 2;
+  repeated string llm_models       = 3;
+  uint32 max_concurrent            = 4;
+  // Plugin names for diagnostics ("piper" / "google_cloud" / etc).
+  // Frontend uses these to disambiguate identically-named voices
+  // across pools if needed.
+  string tts_plugin                = 5;
+  string stt_plugin                = 6;
+  string llm_plugin                = 7;
+}
+
+// Voice mirrors operatorapi.v1.VoiceInfo on the wire — kept as a
+// separate message in the internal proto so internal services don't
+// drag in the operator-facing dependency tree.
+message Voice {
+  string id        = 1;  // plugin-specific voice id (e.g. en-US-Neural2-F)
+  string language  = 2;  // BCP-47 tag
+  string gender    = 3;  // "F" / "M" / "N"
+  string tier      = 4;  // plugin-specific quality hint
 }
 
 message SynthesizeRequest {

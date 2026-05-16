@@ -2006,10 +2006,11 @@ var ProxyControl_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Pipeline_Synthesize_FullMethodName = "/sipmesh.v1.Pipeline/Synthesize"
-	Pipeline_Transcribe_FullMethodName = "/sipmesh.v1.Pipeline/Transcribe"
-	Pipeline_Chat_FullMethodName       = "/sipmesh.v1.Pipeline/Chat"
-	Pipeline_ChatStream_FullMethodName = "/sipmesh.v1.Pipeline/ChatStream"
+	Pipeline_Synthesize_FullMethodName    = "/sipmesh.v1.Pipeline/Synthesize"
+	Pipeline_Transcribe_FullMethodName    = "/sipmesh.v1.Pipeline/Transcribe"
+	Pipeline_GetCapability_FullMethodName = "/sipmesh.v1.Pipeline/GetCapability"
+	Pipeline_Chat_FullMethodName          = "/sipmesh.v1.Pipeline/Chat"
+	Pipeline_ChatStream_FullMethodName    = "/sipmesh.v1.Pipeline/ChatStream"
 )
 
 // PipelineClient is the client API for Pipeline service.
@@ -2032,6 +2033,18 @@ const (
 type PipelineClient interface {
 	Synthesize(ctx context.Context, in *SynthesizeRequest, opts ...grpc.CallOption) (*SynthesizeResponse, error)
 	Transcribe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AudioFrame, TranscribeResponse], error)
+	// GetCapability — pull-on-demand introspection. ai-worker walks
+	// its TTS plugin's loaded voice set (Piper: process-resident
+	// ONNX voices; Google: cached voices.list response) + the LLM
+	// plugin's model id, returns the full catalogue in one unary.
+	// meshctl fans out this RPC across operator-configured ai-worker
+	// pool endpoints to build the OperatorAPI.ListAIWorkers response
+	// the dashboard pipeline-edit form consumes. The catalogue is
+	// static for the pod's lifetime (Piper/Google voices don't
+	// change mid-process), so meshctl caches per-pod for ~5 min to
+	// amortise the fanout cost. No registry write from ai-worker —
+	// pure read-only RPC.
+	GetCapability(ctx context.Context, in *GetCapabilityRequest, opts ...grpc.CallOption) (*Capability, error)
 	// Chat — single-shot text-in/text-out call to the configured LLM
 	// backend (Ollama / Gemini today). The edge owns the multi-turn
 	// history; the request carries the full conversation every time.
@@ -2088,6 +2101,16 @@ func (c *pipelineClient) Transcribe(ctx context.Context, opts ...grpc.CallOption
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Pipeline_TranscribeClient = grpc.BidiStreamingClient[AudioFrame, TranscribeResponse]
 
+func (c *pipelineClient) GetCapability(ctx context.Context, in *GetCapabilityRequest, opts ...grpc.CallOption) (*Capability, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Capability)
+	err := c.cc.Invoke(ctx, Pipeline_GetCapability_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *pipelineClient) Chat(ctx context.Context, in *ChatRequest, opts ...grpc.CallOption) (*ChatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ChatResponse)
@@ -2137,6 +2160,18 @@ type Pipeline_ChatStreamClient = grpc.ServerStreamingClient[ChatStreamChunk]
 type PipelineServer interface {
 	Synthesize(context.Context, *SynthesizeRequest) (*SynthesizeResponse, error)
 	Transcribe(grpc.BidiStreamingServer[AudioFrame, TranscribeResponse]) error
+	// GetCapability — pull-on-demand introspection. ai-worker walks
+	// its TTS plugin's loaded voice set (Piper: process-resident
+	// ONNX voices; Google: cached voices.list response) + the LLM
+	// plugin's model id, returns the full catalogue in one unary.
+	// meshctl fans out this RPC across operator-configured ai-worker
+	// pool endpoints to build the OperatorAPI.ListAIWorkers response
+	// the dashboard pipeline-edit form consumes. The catalogue is
+	// static for the pod's lifetime (Piper/Google voices don't
+	// change mid-process), so meshctl caches per-pod for ~5 min to
+	// amortise the fanout cost. No registry write from ai-worker —
+	// pure read-only RPC.
+	GetCapability(context.Context, *GetCapabilityRequest) (*Capability, error)
 	// Chat — single-shot text-in/text-out call to the configured LLM
 	// backend (Ollama / Gemini today). The edge owns the multi-turn
 	// history; the request carries the full conversation every time.
@@ -2175,6 +2210,9 @@ func (UnimplementedPipelineServer) Synthesize(context.Context, *SynthesizeReques
 }
 func (UnimplementedPipelineServer) Transcribe(grpc.BidiStreamingServer[AudioFrame, TranscribeResponse]) error {
 	return status.Error(codes.Unimplemented, "method Transcribe not implemented")
+}
+func (UnimplementedPipelineServer) GetCapability(context.Context, *GetCapabilityRequest) (*Capability, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCapability not implemented")
 }
 func (UnimplementedPipelineServer) Chat(context.Context, *ChatRequest) (*ChatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Chat not implemented")
@@ -2228,6 +2266,24 @@ func _Pipeline_Transcribe_Handler(srv interface{}, stream grpc.ServerStream) err
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Pipeline_TranscribeServer = grpc.BidiStreamingServer[AudioFrame, TranscribeResponse]
 
+func _Pipeline_GetCapability_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCapabilityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PipelineServer).GetCapability(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Pipeline_GetCapability_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PipelineServer).GetCapability(ctx, req.(*GetCapabilityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Pipeline_Chat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ChatRequest)
 	if err := dec(in); err != nil {
@@ -2267,6 +2323,10 @@ var Pipeline_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Synthesize",
 			Handler:    _Pipeline_Synthesize_Handler,
+		},
+		{
+			MethodName: "GetCapability",
+			Handler:    _Pipeline_GetCapability_Handler,
 		},
 		{
 			MethodName: "Chat",

@@ -1309,6 +1309,56 @@ message RecordStep {
   // Empty = don't write back (LastRecording struct still holds
   // it for downstream steps).
   string result_field = 5;
+
+  // s3_destination — when non-empty, engine uploads the recorded
+  // WAV to this S3 URI prefix in addition to the local RECORD_DIR
+  // write. Engine appends
+  // `<RFC3339-timestamp>_<caller_number>_<call_id>.wav` to the
+  // prefix so multiple voicemails per caller don't collide.
+  // Reuses the edge's existing s3sink.Client (same bucket / creds
+  // the whole-call recording archive already uses). Empty = local
+  // write only.
+  //
+  // Use case: voicemail flow. Operator's frontend / CRM fetches
+  // the WAV from S3 (pre-signed URL surfaced via the enriched
+  // recording_archived event); local file is GC'd by
+  // RECORDINGS_RETENTION_DAYS.
+  string s3_destination = 6;
+
+  // transcribe — when true, engine runs the recorded WAV through
+  // the call's AIPipe STT plugin after the record completes and
+  // attaches the transcript text to the recording_archived event
+  // payload. Off by default (STT round-trip adds latency + cost).
+  //
+  // Use case: voicemail Telegram preview. Frontend doesn't need
+  // operators to play the WAV to know who called and why — the
+  // transcript drops straight into the chat alongside the audio
+  // attachment. STT respects the call's locked language (same
+  // path the live ConverseStep uses).
+  bool transcribe = 7;
+
+  // outcome — free-form tag tagging WHY this recording was made.
+  // Surfaced verbatim on the recording_archived event so
+  // downstream consumers (frontend fan-out, analytics, CRM) can
+  // route by intent without parsing the recording path. Engine
+  // doesn't interpret the value — operator's vocabulary wins.
+  //
+  // Examples: "voicemail", "feedback", "qa_recording",
+  // "intake_summary". Empty = no outcome tag.
+  string outcome = 8;
+
+  // emit_sidecar_json — when true, engine writes
+  // `<recording_basename>.json` next to the WAV (both locally and
+  // in S3 when s3_destination is set). The sidecar carries the
+  // full CallState.CustomFields snapshot + call metadata
+  // (caller, callee, started/ended timestamps, transcript when
+  // transcribe=true) — single-file pickup for offline analysis
+  // pipelines that don't subscribe to the meshctl event stream.
+  //
+  // Opt-in because event-stream consumers (frontend backend
+  // already wired) get the same payload over gRPC without the
+  // extra disk write.
+  bool emit_sidecar_json = 9;
 }
 
 // GotoStep — unconditional jump to a LabelStep with matching name

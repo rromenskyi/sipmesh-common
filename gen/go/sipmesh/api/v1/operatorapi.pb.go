@@ -5265,9 +5265,55 @@ type RecordStep struct {
 	// Optional CallState.CustomFields key for the recorded path.
 	// Empty = don't write back (LastRecording struct still holds
 	// it for downstream steps).
-	ResultField   string `protobuf:"bytes,5,opt,name=result_field,json=resultField,proto3" json:"result_field,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ResultField string `protobuf:"bytes,5,opt,name=result_field,json=resultField,proto3" json:"result_field,omitempty"`
+	// s3_destination — when non-empty, engine uploads the recorded
+	// WAV to this S3 URI prefix in addition to the local RECORD_DIR
+	// write. Engine appends
+	// `<RFC3339-timestamp>_<caller_number>_<call_id>.wav` to the
+	// prefix so multiple voicemails per caller don't collide.
+	// Reuses the edge's existing s3sink.Client (same bucket / creds
+	// the whole-call recording archive already uses). Empty = local
+	// write only.
+	//
+	// Use case: voicemail flow. Operator's frontend / CRM fetches
+	// the WAV from S3 (pre-signed URL surfaced via the enriched
+	// recording_archived event); local file is GC'd by
+	// RECORDINGS_RETENTION_DAYS.
+	S3Destination string `protobuf:"bytes,6,opt,name=s3_destination,json=s3Destination,proto3" json:"s3_destination,omitempty"`
+	// transcribe — when true, engine runs the recorded WAV through
+	// the call's AIPipe STT plugin after the record completes and
+	// attaches the transcript text to the recording_archived event
+	// payload. Off by default (STT round-trip adds latency + cost).
+	//
+	// Use case: voicemail Telegram preview. Frontend doesn't need
+	// operators to play the WAV to know who called and why — the
+	// transcript drops straight into the chat alongside the audio
+	// attachment. STT respects the call's locked language (same
+	// path the live ConverseStep uses).
+	Transcribe bool `protobuf:"varint,7,opt,name=transcribe,proto3" json:"transcribe,omitempty"`
+	// outcome — free-form tag tagging WHY this recording was made.
+	// Surfaced verbatim on the recording_archived event so
+	// downstream consumers (frontend fan-out, analytics, CRM) can
+	// route by intent without parsing the recording path. Engine
+	// doesn't interpret the value — operator's vocabulary wins.
+	//
+	// Examples: "voicemail", "feedback", "qa_recording",
+	// "intake_summary". Empty = no outcome tag.
+	Outcome string `protobuf:"bytes,8,opt,name=outcome,proto3" json:"outcome,omitempty"`
+	// emit_sidecar_json — when true, engine writes
+	// `<recording_basename>.json` next to the WAV (both locally and
+	// in S3 when s3_destination is set). The sidecar carries the
+	// full CallState.CustomFields snapshot + call metadata
+	// (caller, callee, started/ended timestamps, transcript when
+	// transcribe=true) — single-file pickup for offline analysis
+	// pipelines that don't subscribe to the meshctl event stream.
+	//
+	// Opt-in because event-stream consumers (frontend backend
+	// already wired) get the same payload over gRPC without the
+	// extra disk write.
+	EmitSidecarJson bool `protobuf:"varint,9,opt,name=emit_sidecar_json,json=emitSidecarJson,proto3" json:"emit_sidecar_json,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RecordStep) Reset() {
@@ -5333,6 +5379,34 @@ func (x *RecordStep) GetResultField() string {
 		return x.ResultField
 	}
 	return ""
+}
+
+func (x *RecordStep) GetS3Destination() string {
+	if x != nil {
+		return x.S3Destination
+	}
+	return ""
+}
+
+func (x *RecordStep) GetTranscribe() bool {
+	if x != nil {
+		return x.Transcribe
+	}
+	return false
+}
+
+func (x *RecordStep) GetOutcome() string {
+	if x != nil {
+		return x.Outcome
+	}
+	return ""
+}
+
+func (x *RecordStep) GetEmitSidecarJson() bool {
+	if x != nil {
+		return x.EmitSidecarJson
+	}
+	return false
 }
 
 // GotoStep — unconditional jump to a LabelStep with matching name
@@ -8606,14 +8680,20 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\rON_ERROR_FAIL\x10\x01\x12\x15\n" +
 	"\x11ON_ERROR_CONTINUE\x10\x02\"\x1f\n" +
 	"\tLabelStep\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xc4\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xd1\x02\n" +
 	"\n" +
 	"RecordStep\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12&\n" +
 	"\x0fmax_duration_ms\x18\x02 \x01(\rR\rmaxDurationMs\x12.\n" +
 	"\x13silence_endpoint_ms\x18\x03 \x01(\rR\x11silenceEndpointMs\x12'\n" +
 	"\x0fdtmf_terminator\x18\x04 \x01(\tR\x0edtmfTerminator\x12!\n" +
-	"\fresult_field\x18\x05 \x01(\tR\vresultField\" \n" +
+	"\fresult_field\x18\x05 \x01(\tR\vresultField\x12%\n" +
+	"\x0es3_destination\x18\x06 \x01(\tR\rs3Destination\x12\x1e\n" +
+	"\n" +
+	"transcribe\x18\a \x01(\bR\n" +
+	"transcribe\x12\x18\n" +
+	"\aoutcome\x18\b \x01(\tR\aoutcome\x12*\n" +
+	"\x11emit_sidecar_json\x18\t \x01(\bR\x0femitSidecarJson\" \n" +
 	"\bGotoStep\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\"\xfb\x01\n" +
 	"\fTransferStep\x12\x1d\n" +

@@ -898,6 +898,7 @@ message PipelineStep {
   SubPipelineStep sub_pipeline = 21;
   TransferStep transfer  = 22;
   QueueStep    queue     = 23;
+  WhisperStep  whisper   = 24;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -1977,4 +1978,99 @@ message PullConfigSetResponse {
   // ApplyOperatorConfig calls from the frontend pass this value
   // as `parent_version` to win the optimistic-concurrency check.
   uint64 version = 2;
+}
+
+// =============================================================================
+// WhisperStep — multi-modal "ask the dial-leg operator to confirm
+// before bridging" primitive. Runs on the DIAL leg after a
+// DialStep has answered; caller stays on hold + MOH on the source
+// leg. The bot plays a TTS brief ("Call from Alice about
+// billing. Press 1 to accept, # to reject, * to repeat. Or say
+// `accept` / `reject` / `repeat`.") then collects DTMF AND voice
+// in parallel, first-signal-wins.
+//
+// Voice path reuses the engine's existing STT + endpoint-VAD +
+// barge-in plumbing (already leg-uniform after the May 14-15
+// wave) — the operator can interrupt the brief mid-sentence
+// ("yes, connect"), the bot stops, STT captures the seed phrase,
+// keyword match → accept → BranchStep routes to BridgeStep.
+//
+// Decisions:
+//   - accept  → bridge caller to operator (BranchStep on
+//               last_whisper_outcome == "accept")
+//   - reject  → drop to voicemail (BranchStep on "reject")
+//   - repeat  → replay the brief, up to max_retries times; on
+//               retry exhaustion fall through `on_timeout`
+//   - timeout → on_timeout default (REJECT — better to voicemail
+//               than auto-bridge to a confused operator)
+//
+// Pipeline author wires the BranchStep against
+// CallState.LastWhisperOutcome (engine sets this field to
+// "accept" / "reject" / "repeat_exhausted" / "timeout") right
+// after the WhisperStep returns.
+//
+// Phrase matching: lowercase + whitespace-split + first-token-in-
+// list match. No fuzzy / LLM / Levenshtein in v1 — pipeline
+// author lists every variation operators say in their language
+// ("да"/"ага"/"угу"/"yep"/"yes"/"accept"). LLM-intent upgrade is
+// future work if keyword path proves clumsy in production.
+//
+// Per-language phrase lists are SEPARATE from system phrases:
+// operators usually do the briefing in the operator's language,
+// callers can be in any of the pipeline's languages.
+// default_language picks the entry when none matches the locked
+// STT detection.
+message WhisperStep {
+  // text_by_language / text_pool_by_language — TTS brief to play
+  // on the dial leg. Pool variants randomise per occurrence so
+  // repeated whispers don't sound canned. Substitution supported
+  // — typically references CustomFields populated by an earlier
+  // ConverseStep's <DONE attrs.../> marker
+  // ("Call from {{caller_name}} about {{purpose}}").
+  map<string, string>     text_by_language        = 1;
+  map<string, StringList> text_pool_by_language   = 2;
+  // voice_by_language — optional per-language voice override for
+  // the brief. Empty = use the call's locked BotVoice (same RR
+  // persona who greeted the caller, played to the operator now).
+  // Operators who prefer a neutral "system dispatcher" voice for
+  // the brief set this explicitly.
+  map<string, string>     voice_by_language       = 3;
+  string default_language                         = 4;
+
+  // DTMF acceptance / rejection / repeat digits. Defaults below
+  // are the operator-facing convention.
+  string accept_digit = 5;  // default "1"
+  string reject_digit = 6;  // default "#"
+  string repeat_digit = 7;  // default "*"
+
+  // wait_for_response_ms — covers BOTH the DTMF collector AND the
+  // post-brief voice-capture window. 0 = engine default
+  // (8000 ms — accommodates "operator picks up, says 'allo'
+  // first, then hears brief" pattern).
+  uint32 wait_for_response_ms = 8;
+
+  enum TimeoutBehavior {
+    TIMEOUT_REJECT = 0;  // default — better voicemail than misbridge
+    TIMEOUT_ACCEPT = 1;
+  }
+  TimeoutBehavior on_timeout = 9;
+
+  // Voice path — list of accept/reject/repeat phrases per
+  // language. Tokenised lowercase whitespace-split match against
+  // STT output. First-frame-wins between DTMF + voice channels.
+  // Empty maps = voice path disabled; only DTMF decides.
+  map<string, StringList> accept_phrases_by_language = 10;
+  map<string, StringList> reject_phrases_by_language = 11;
+  map<string, StringList> repeat_phrases_by_language = 12;
+
+  // Retry budget on `repeat` / no-match / low-confidence. Default
+  // 1 → 2 total attempts (initial + 1 retry). Exceeded budget +
+  // no clear signal → fall through `on_timeout`.
+  uint32 max_retries          = 13;
+
+  // voice_confidence_min — STT confidence floor for voice path
+  // decisions. Below this we treat the utterance as "didn't
+  // catch" and bounce into the retry budget. 0 = engine default
+  // (0.6).
+  float voice_confidence_min  = 14;
 }

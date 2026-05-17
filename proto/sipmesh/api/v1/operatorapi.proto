@@ -1010,12 +1010,51 @@ message ConverseStepInterruptOnCustomField {
 }
 
 message DialStep {
-  // Discriminated union: exactly ONE of the targeting fields set.
+  // Targeting fields. Two modes:
+  //
+  //   1. operator_group_trunk set → hunt-group fan-out
+  //      (callee + trunk MUST be empty; the trunk's
+  //      operator_group bindings define the parallel-INVITE
+  //      target set).
+  //   2. operator_group_trunk empty → direct dial
+  //      (callee REQUIRED; trunk OPTIONAL — when set, picks a
+  //      specific outbound transit; when empty, originator
+  //      falls back to its default trunk).
+  //
+  // Earlier comments framed this as "discriminated union: exactly
+  // ONE", which was misleading — trunk + callee is a legitimate
+  // pair (call this number through that carrier). Validator
+  // (operatorapi/server.go validateStepDiscriminators) enforces
+  // the two-mode shape above.
   string operator_group_trunk = 1;
   string trunk                = 2;
   string callee               = 3;
+
   WaitingPolicy waiting       = 10;
   bool background             = 11;
+
+  // caller_id, when set, overrides the From-header / P-Asserted-
+  // Identity on the outbound leg. Empty = inherit
+  // `Trunk.outbound_caller_id`; if that is also empty, the
+  // carrier's default applies (whatever DID the SIP account is
+  // registered with).
+  //
+  // Use case: pipeline-driven CLID switching per dial — e.g.,
+  // receptionist demo routes marketing calls through the same
+  // carrier trunk but presents a different DID to the called
+  // party, so callbacks land on the marketing line. Without this
+  // field, every outbound through a given trunk shares one CLID
+  // (set on Trunk.outbound_caller_id) and pipeline authors
+  // can't switch identities per dial without provisioning a
+  // second trunk.
+  //
+  // Multi-tenant note: in a tenant-aware deployment, the
+  // operator-side authorizer SHOULD restrict the set of
+  // caller_id.user values a tenant may present on outbound legs
+  // routed through shared trunks. Engine doesn't enforce this
+  // today (single-tenant operating model); the authorizer hook
+  // is the right place when tenant-isolation lands.
+  CallerID caller_id = 4;
 }
 
 message WaitingPolicy {

@@ -899,6 +899,7 @@ message PipelineStep {
   TransferStep transfer  = 22;
   QueueStep    queue     = 23;
   WhisperStep  whisper   = 24;
+  OnPeerStep   on_peer   = 25;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -2073,4 +2074,68 @@ message WhisperStep {
   // catch" and bounce into the retry budget. 0 = engine default
   // (0.6).
   float voice_confidence_min  = 14;
+}
+
+// =============================================================================
+// OnPeerStep — wrapper that runs its nested step list on the
+// peer leg (the leg the most recent DialStep answered) instead
+// of the caller leg. While the nested steps run on the peer, the
+// caller leg stays on whatever audio it was on (typically MOH
+// from a preceding HoldStep).
+//
+// Receptionist demo's canonical use:
+//
+//   - dial: { operator_group_trunk: phones, background: true }
+//   - hold: {}
+//   - on_peer:
+//       steps:
+//         - whisper:
+//             text_by_language:
+//               en: "Call from {{caller_name}} about {{purpose}}.
+//                    Press 1 to accept, # to reject."
+//             accept_digit: "1"
+//             reject_digit: "#"
+//             accept_phrases_by_language: { en: [yes, accept, connect] }
+//             reject_phrases_by_language: { en: [no, reject, voicemail] }
+//   - unhold: {}
+//   - branch:
+//       cases:
+//         - when: { custom: { last_whisper_outcome: accept } }
+//           steps: [ bridge: {} ]
+//         - default
+//           steps: [ ... voicemail flow ... ]
+//
+// Engine looks up the peer leg's CallRunner by
+// peer_source (default "last_dial" → reads
+// CallState.LastDialResult.InternalCallID), pivots the nested
+// step's CallState to the peer's primitive callbacks, runs the
+// list, restores the original CallState. CustomFields are SHARED
+// (one map per call); the peer leg's nested steps can write
+// CustomFields that the post-on_peer caller-leg branch reads.
+//
+// Failure modes:
+//   - peer_source resolves to empty (no prior DialStep ran, OR
+//     it didn't answer) → return error; downstream BranchStep
+//     can be paired with a default-case voicemail fallback if
+//     the operator wants graceful degradation.
+//   - peer leg has hung up by the time on_peer runs → same shape
+//     as the no-peer case, error surfaces immediately.
+//
+// Cross-edge note: when the peer leg lives on a DIFFERENT
+// edgemgr replica than the caller (multi-region future), engine
+// surfaces a NotImplemented error in v1 — peer must be local to
+// the calling edge. Multi-edge orchestration is a separate
+// design pass.
+message OnPeerStep {
+  // peer_source — where to find the peer leg's
+  // internal_call_id. "last_dial" (the default, empty also
+  // maps to it) reads CallState.LastDialResult.InternalCallID.
+  // Future values: "custom" + peer_id_field, etc.
+  string peer_source = 1;
+
+  // steps — the nested step list to run on the peer leg.
+  // Engine swaps CallState primitives to the peer's callbacks
+  // before running these; restores caller's primitives after
+  // (including on error). CustomFields stay shared.
+  repeated PipelineStep steps = 2;
 }

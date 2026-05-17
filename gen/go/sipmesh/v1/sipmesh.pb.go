@@ -3075,6 +3075,43 @@ type CallRecordingDone struct {
 	// CDR.transcript_uri so frontend renders subtitles next to the
 	// WAV without re-parsing CallTranscript events.
 	TranscriptUri string `protobuf:"bytes,4,opt,name=transcript_uri,json=transcriptUri,proto3" json:"transcript_uri,omitempty"`
+	// Per-RecordStep enrichments — populated only for recordings
+	// produced by an explicit RecordStep in the pipeline (vs the
+	// whole-call passive recording that fires on every dialog).
+	// Whole-call recordings emit only fields 1-4 with these empty
+	// so existing CDR consumers don't see surprise diffs.
+	//
+	// outcome — free-form tag the operator set on the RecordStep
+	// (`voicemail` / `feedback` / `qa_recording` etc). Engine
+	// doesn't interpret; downstream consumers (frontend fan-out,
+	// analytics, CRM webhooks) route by this.
+	Outcome string `protobuf:"bytes,5,opt,name=outcome,proto3" json:"outcome,omitempty"`
+	// transcript — STT text from RecordStep.transcribe=true. Empty
+	// when transcribe was off, the STT pass failed, or the WAV had
+	// no recognisable audio. Surfaces in Telegram voicemail previews
+	// and frontend "call list" rows without an extra GET on the
+	// sidecar JSON.
+	Transcript string `protobuf:"bytes,6,opt,name=transcript,proto3" json:"transcript,omitempty"`
+	// wav_url — when RecordStep.s3_destination was set and the
+	// upload succeeded, the `s3://bucket/<operator-key>` URI of the
+	// operator-controlled WAV destination. Distinct from `uri`
+	// (field 1) which is the canonical whole-call archive path.
+	// Both can be populated when a RecordStep produced an artefact
+	// separately from the call's whole-call recording.
+	WavUrl string `protobuf:"bytes,7,opt,name=wav_url,json=wavUrl,proto3" json:"wav_url,omitempty"`
+	// sidecar_json_url — `<wav>.json` next to wav_url when
+	// RecordStep.emit_sidecar_json was on. Single-fetch pickup point
+	// for offline analytics pipelines (CustomFields + metadata +
+	// transcript in one file).
+	SidecarJsonUrl string `protobuf:"bytes,8,opt,name=sidecar_json_url,json=sidecarJsonUrl,proto3" json:"sidecar_json_url,omitempty"`
+	// custom_fields — snapshot of CallState.CustomFields at the
+	// moment the RecordStep finished. Includes attrs the LLM
+	// populated via the ConverseStep <DONE attrs/> marker
+	// (caller_name, purpose, etc — pipeline-author schema, engine
+	// does not validate keys). Frontend uses these to populate
+	// "call summary" rows without parsing audio or the sidecar
+	// JSON.
+	CustomFields  map[string]string `protobuf:"bytes,9,rep,name=custom_fields,json=customFields,proto3" json:"custom_fields,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3135,6 +3172,41 @@ func (x *CallRecordingDone) GetTranscriptUri() string {
 		return x.TranscriptUri
 	}
 	return ""
+}
+
+func (x *CallRecordingDone) GetOutcome() string {
+	if x != nil {
+		return x.Outcome
+	}
+	return ""
+}
+
+func (x *CallRecordingDone) GetTranscript() string {
+	if x != nil {
+		return x.Transcript
+	}
+	return ""
+}
+
+func (x *CallRecordingDone) GetWavUrl() string {
+	if x != nil {
+		return x.WavUrl
+	}
+	return ""
+}
+
+func (x *CallRecordingDone) GetSidecarJsonUrl() string {
+	if x != nil {
+		return x.SidecarJsonUrl
+	}
+	return ""
+}
+
+func (x *CallRecordingDone) GetCustomFields() map[string]string {
+	if x != nil {
+		return x.CustomFields
+	}
+	return nil
 }
 
 type CallEnded struct {
@@ -7162,13 +7234,23 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\fDialogHangup\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\"\r\n" +
 	"\vCallStarted\"\x0e\n" +
-	"\fCallAnswered\"\x83\x01\n" +
+	"\fCallAnswered\"\x97\x03\n" +
 	"\x11CallRecordingDone\x12\x10\n" +
 	"\x03uri\x18\x01 \x01(\tR\x03uri\x12\x14\n" +
 	"\x05bytes\x18\x02 \x01(\x04R\x05bytes\x12\x1f\n" +
 	"\vduration_ms\x18\x03 \x01(\rR\n" +
 	"durationMs\x12%\n" +
-	"\x0etranscript_uri\x18\x04 \x01(\tR\rtranscriptUri\"\xf4\x03\n" +
+	"\x0etranscript_uri\x18\x04 \x01(\tR\rtranscriptUri\x12\x18\n" +
+	"\aoutcome\x18\x05 \x01(\tR\aoutcome\x12\x1e\n" +
+	"\n" +
+	"transcript\x18\x06 \x01(\tR\n" +
+	"transcript\x12\x17\n" +
+	"\awav_url\x18\a \x01(\tR\x06wavUrl\x12(\n" +
+	"\x10sidecar_json_url\x18\b \x01(\tR\x0esidecarJsonUrl\x12T\n" +
+	"\rcustom_fields\x18\t \x03(\v2/.sipmesh.v1.CallRecordingDone.CustomFieldsEntryR\fcustomFields\x1a?\n" +
+	"\x11CustomFieldsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf4\x03\n" +
 	"\tCallEnded\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x1f\n" +
 	"\vduration_ms\x18\x02 \x01(\rR\n" +
@@ -7559,7 +7641,7 @@ func file_sipmesh_v1_sipmesh_proto_rawDescGZIP() []byte {
 }
 
 var file_sipmesh_v1_sipmesh_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_sipmesh_v1_sipmesh_proto_msgTypes = make([]protoimpl.MessageInfo, 97)
+var file_sipmesh_v1_sipmesh_proto_msgTypes = make([]protoimpl.MessageInfo, 98)
 var file_sipmesh_v1_sipmesh_proto_goTypes = []any{
 	(HoldMode)(0),                          // 0: sipmesh.v1.HoldMode
 	(CallFlow)(0),                          // 1: sipmesh.v1.CallFlow
@@ -7665,18 +7747,19 @@ var file_sipmesh_v1_sipmesh_proto_goTypes = []any{
 	(*GetClientEndpointsRequest)(nil),      // 101: sipmesh.v1.GetClientEndpointsRequest
 	(*GetClientEndpointsResponse)(nil),     // 102: sipmesh.v1.GetClientEndpointsResponse
 	(*IceServer)(nil),                      // 103: sipmesh.v1.IceServer
-	nil,                                    // 104: sipmesh.v1.CallEnded.CustomFieldsEntry
-	(*timestamppb.Timestamp)(nil),          // 105: google.protobuf.Timestamp
+	nil,                                    // 104: sipmesh.v1.CallRecordingDone.CustomFieldsEntry
+	nil,                                    // 105: sipmesh.v1.CallEnded.CustomFieldsEntry
+	(*timestamppb.Timestamp)(nil),          // 106: google.protobuf.Timestamp
 }
 var file_sipmesh_v1_sipmesh_proto_depIdxs = []int32{
-	105, // 0: sipmesh.v1.PublishCallSignalRequest.ts:type_name -> google.protobuf.Timestamp
+	106, // 0: sipmesh.v1.PublishCallSignalRequest.ts:type_name -> google.protobuf.Timestamp
 	5,   // 1: sipmesh.v1.PublishCallSignalRequest.kind:type_name -> sipmesh.v1.PublishCallSignalRequest.Kind
 	0,   // 2: sipmesh.v1.SetCallHoldRequest.mode:type_name -> sipmesh.v1.HoldMode
 	1,   // 3: sipmesh.v1.StartCallRequest.flow:type_name -> sipmesh.v1.CallFlow
 	0,   // 4: sipmesh.v1.EdgeSetCallHoldRequest.mode:type_name -> sipmesh.v1.HoldMode
 	2,   // 5: sipmesh.v1.TapFrame.direction:type_name -> sipmesh.v1.TapDirection
 	41,  // 6: sipmesh.v1.WorkerHello.ai_pools:type_name -> sipmesh.v1.AIPool
-	105, // 7: sipmesh.v1.CallEvent.ts:type_name -> google.protobuf.Timestamp
+	106, // 7: sipmesh.v1.CallEvent.ts:type_name -> google.protobuf.Timestamp
 	46,  // 8: sipmesh.v1.CallEvent.started:type_name -> sipmesh.v1.CallStarted
 	47,  // 9: sipmesh.v1.CallEvent.answered:type_name -> sipmesh.v1.CallAnswered
 	48,  // 10: sipmesh.v1.CallEvent.recording_done:type_name -> sipmesh.v1.CallRecordingDone
@@ -7685,115 +7768,116 @@ var file_sipmesh_v1_sipmesh_proto_depIdxs = []int32{
 	86,  // 13: sipmesh.v1.CallEvent.dtmf:type_name -> sipmesh.v1.CallDTMF
 	44,  // 14: sipmesh.v1.CallEvent.dialog_action:type_name -> sipmesh.v1.DialogAction
 	45,  // 15: sipmesh.v1.DialogAction.hangup:type_name -> sipmesh.v1.DialogHangup
-	104, // 16: sipmesh.v1.CallEnded.custom_fields:type_name -> sipmesh.v1.CallEnded.CustomFieldsEntry
-	3,   // 17: sipmesh.v1.SipTraceMessage.direction:type_name -> sipmesh.v1.SipDirection
-	57,  // 18: sipmesh.v1.ListCallsResponse.calls:type_name -> sipmesh.v1.CallSummary
-	57,  // 19: sipmesh.v1.CallDetail.call:type_name -> sipmesh.v1.CallSummary
-	62,  // 20: sipmesh.v1.CallDetail.worker:type_name -> sipmesh.v1.WorkerSummary
-	62,  // 21: sipmesh.v1.ListWorkersResponse.workers:type_name -> sipmesh.v1.WorkerSummary
-	62,  // 22: sipmesh.v1.WorkerDetail.worker:type_name -> sipmesh.v1.WorkerSummary
-	6,   // 23: sipmesh.v1.TransferCallRequest.mode:type_name -> sipmesh.v1.TransferCallRequest.Mode
-	76,  // 24: sipmesh.v1.GetCPSStatusResponse.cps:type_name -> sipmesh.v1.CPSBucket
-	77,  // 25: sipmesh.v1.GetCPSStatusResponse.concurrency:type_name -> sipmesh.v1.ConcurrencyBucket
-	81,  // 26: sipmesh.v1.Capability.voices:type_name -> sipmesh.v1.Voice
-	4,   // 27: sipmesh.v1.SynthesizeRequest.codec:type_name -> sipmesh.v1.Codec
-	7,   // 28: sipmesh.v1.ChatMessage.role:type_name -> sipmesh.v1.ChatMessage.Role
-	88,  // 29: sipmesh.v1.ChatRequest.messages:type_name -> sipmesh.v1.ChatMessage
-	4,   // 30: sipmesh.v1.ChatRequest.output_codec:type_name -> sipmesh.v1.Codec
-	4,   // 31: sipmesh.v1.ChatStreamChunk.audio_codec:type_name -> sipmesh.v1.Codec
-	105, // 32: sipmesh.v1.ConfigSet.created_at:type_name -> google.protobuf.Timestamp
-	98,  // 33: sipmesh.v1.ListVersionsResponse.versions:type_name -> sipmesh.v1.ConfigSetMeta
-	105, // 34: sipmesh.v1.ConfigSetMeta.created_at:type_name -> google.protobuf.Timestamp
-	103, // 35: sipmesh.v1.GetClientEndpointsResponse.ice_servers:type_name -> sipmesh.v1.IceServer
-	8,   // 36: sipmesh.v1.Scheduler.AllocateCall:input_type -> sipmesh.v1.AllocateCallRequest
-	10,  // 37: sipmesh.v1.Scheduler.ReleaseCall:input_type -> sipmesh.v1.ReleaseCallRequest
-	14,  // 38: sipmesh.v1.Scheduler.SetCallRemote:input_type -> sipmesh.v1.SetCallRemoteRequest
-	11,  // 39: sipmesh.v1.Scheduler.PublishCallSignal:input_type -> sipmesh.v1.PublishCallSignalRequest
-	16,  // 40: sipmesh.v1.Scheduler.BridgeCalls:input_type -> sipmesh.v1.BridgeCallsRequest
-	18,  // 41: sipmesh.v1.Scheduler.SetCallHold:input_type -> sipmesh.v1.SetCallHoldRequest
-	20,  // 42: sipmesh.v1.Scheduler.SetCallCustomField:input_type -> sipmesh.v1.SetCallCustomFieldRequest
-	22,  // 43: sipmesh.v1.Scheduler.SwitchCallCodec:input_type -> sipmesh.v1.SwitchCallCodecRequest
-	24,  // 44: sipmesh.v1.Edge.StartCall:input_type -> sipmesh.v1.StartCallRequest
-	26,  // 45: sipmesh.v1.Edge.CancelCall:input_type -> sipmesh.v1.CancelCallRequest
-	28,  // 46: sipmesh.v1.Edge.SetRemote:input_type -> sipmesh.v1.SetRemoteRequest
-	38,  // 47: sipmesh.v1.Edge.TapCall:input_type -> sipmesh.v1.TapCallRequest
-	30,  // 48: sipmesh.v1.Edge.BridgeCalls:input_type -> sipmesh.v1.EdgeBridgeCallsRequest
-	32,  // 49: sipmesh.v1.Edge.SetCallHold:input_type -> sipmesh.v1.EdgeSetCallHoldRequest
-	34,  // 50: sipmesh.v1.Edge.SwitchCallCodec:input_type -> sipmesh.v1.EdgeSwitchCallCodecRequest
-	36,  // 51: sipmesh.v1.Edge.SetCallCustomField:input_type -> sipmesh.v1.EdgeSetCallCustomFieldRequest
-	40,  // 52: sipmesh.v1.Registry.Register:input_type -> sipmesh.v1.WorkerHello
-	43,  // 53: sipmesh.v1.Registry.CallEvents:input_type -> sipmesh.v1.CallEvent
-	55,  // 54: sipmesh.v1.Admin.ListCalls:input_type -> sipmesh.v1.ListCallsRequest
-	58,  // 55: sipmesh.v1.Admin.DescribeCall:input_type -> sipmesh.v1.DescribeCallRequest
-	60,  // 56: sipmesh.v1.Admin.ListWorkers:input_type -> sipmesh.v1.ListWorkersRequest
-	63,  // 57: sipmesh.v1.Admin.DescribeWorker:input_type -> sipmesh.v1.DescribeWorkerRequest
-	54,  // 58: sipmesh.v1.Admin.SubscribeEvents:input_type -> sipmesh.v1.SubscribeEventsRequest
-	65,  // 59: sipmesh.v1.Admin.ForceReleaseCall:input_type -> sipmesh.v1.ForceReleaseCallRequest
-	67,  // 60: sipmesh.v1.Admin.DrainWorker:input_type -> sipmesh.v1.DrainWorkerRequest
-	51,  // 61: sipmesh.v1.Admin.TapCall:input_type -> sipmesh.v1.AdminTapCallRequest
-	52,  // 62: sipmesh.v1.SipTrace.Subscribe:input_type -> sipmesh.v1.SipTraceRequest
-	73,  // 63: sipmesh.v1.ProxyControl.OriginateCall:input_type -> sipmesh.v1.OriginateCallRequest
-	75,  // 64: sipmesh.v1.ProxyControl.GetCPSStatus:input_type -> sipmesh.v1.GetCPSStatusRequest
-	101, // 65: sipmesh.v1.ProxyControl.GetClientEndpoints:input_type -> sipmesh.v1.GetClientEndpointsRequest
-	71,  // 66: sipmesh.v1.ProxyControl.DescribeTrunk:input_type -> sipmesh.v1.DescribeTrunkRequest
-	69,  // 67: sipmesh.v1.ProxyControl.TransferCall:input_type -> sipmesh.v1.TransferCallRequest
-	82,  // 68: sipmesh.v1.Pipeline.Synthesize:input_type -> sipmesh.v1.SynthesizeRequest
-	84,  // 69: sipmesh.v1.Pipeline.Transcribe:input_type -> sipmesh.v1.AudioFrame
-	79,  // 70: sipmesh.v1.Pipeline.GetCapability:input_type -> sipmesh.v1.GetCapabilityRequest
-	89,  // 71: sipmesh.v1.Pipeline.Chat:input_type -> sipmesh.v1.ChatRequest
-	89,  // 72: sipmesh.v1.Pipeline.ChatStream:input_type -> sipmesh.v1.ChatRequest
-	93,  // 73: sipmesh.v1.Config.ApplyConfigSet:input_type -> sipmesh.v1.ApplyConfigSetRequest
-	95,  // 74: sipmesh.v1.Config.GetConfigSet:input_type -> sipmesh.v1.GetConfigSetRequest
-	96,  // 75: sipmesh.v1.Config.ListVersions:input_type -> sipmesh.v1.ListVersionsRequest
-	99,  // 76: sipmesh.v1.Config.RollbackConfigSet:input_type -> sipmesh.v1.RollbackConfigSetRequest
-	100, // 77: sipmesh.v1.Config.Subscribe:input_type -> sipmesh.v1.SubscribeConfigRequest
-	9,   // 78: sipmesh.v1.Scheduler.AllocateCall:output_type -> sipmesh.v1.AllocateCallResponse
-	13,  // 79: sipmesh.v1.Scheduler.ReleaseCall:output_type -> sipmesh.v1.ReleaseCallResponse
-	15,  // 80: sipmesh.v1.Scheduler.SetCallRemote:output_type -> sipmesh.v1.SetCallRemoteResponse
-	12,  // 81: sipmesh.v1.Scheduler.PublishCallSignal:output_type -> sipmesh.v1.PublishCallSignalResponse
-	17,  // 82: sipmesh.v1.Scheduler.BridgeCalls:output_type -> sipmesh.v1.BridgeCallsResponse
-	19,  // 83: sipmesh.v1.Scheduler.SetCallHold:output_type -> sipmesh.v1.SetCallHoldResponse
-	21,  // 84: sipmesh.v1.Scheduler.SetCallCustomField:output_type -> sipmesh.v1.SetCallCustomFieldResponse
-	23,  // 85: sipmesh.v1.Scheduler.SwitchCallCodec:output_type -> sipmesh.v1.SwitchCallCodecResponse
-	25,  // 86: sipmesh.v1.Edge.StartCall:output_type -> sipmesh.v1.StartCallResponse
-	27,  // 87: sipmesh.v1.Edge.CancelCall:output_type -> sipmesh.v1.CancelCallResponse
-	29,  // 88: sipmesh.v1.Edge.SetRemote:output_type -> sipmesh.v1.SetRemoteResponse
-	39,  // 89: sipmesh.v1.Edge.TapCall:output_type -> sipmesh.v1.TapFrame
-	31,  // 90: sipmesh.v1.Edge.BridgeCalls:output_type -> sipmesh.v1.EdgeBridgeCallsResponse
-	33,  // 91: sipmesh.v1.Edge.SetCallHold:output_type -> sipmesh.v1.EdgeSetCallHoldResponse
-	35,  // 92: sipmesh.v1.Edge.SwitchCallCodec:output_type -> sipmesh.v1.EdgeSwitchCallCodecResponse
-	37,  // 93: sipmesh.v1.Edge.SetCallCustomField:output_type -> sipmesh.v1.EdgeSetCallCustomFieldResponse
-	42,  // 94: sipmesh.v1.Registry.Register:output_type -> sipmesh.v1.WorkerAck
-	50,  // 95: sipmesh.v1.Registry.CallEvents:output_type -> sipmesh.v1.CallEventsAck
-	56,  // 96: sipmesh.v1.Admin.ListCalls:output_type -> sipmesh.v1.ListCallsResponse
-	59,  // 97: sipmesh.v1.Admin.DescribeCall:output_type -> sipmesh.v1.CallDetail
-	61,  // 98: sipmesh.v1.Admin.ListWorkers:output_type -> sipmesh.v1.ListWorkersResponse
-	64,  // 99: sipmesh.v1.Admin.DescribeWorker:output_type -> sipmesh.v1.WorkerDetail
-	43,  // 100: sipmesh.v1.Admin.SubscribeEvents:output_type -> sipmesh.v1.CallEvent
-	66,  // 101: sipmesh.v1.Admin.ForceReleaseCall:output_type -> sipmesh.v1.ForceReleaseCallResponse
-	68,  // 102: sipmesh.v1.Admin.DrainWorker:output_type -> sipmesh.v1.DrainWorkerResponse
-	39,  // 103: sipmesh.v1.Admin.TapCall:output_type -> sipmesh.v1.TapFrame
-	53,  // 104: sipmesh.v1.SipTrace.Subscribe:output_type -> sipmesh.v1.SipTraceMessage
-	74,  // 105: sipmesh.v1.ProxyControl.OriginateCall:output_type -> sipmesh.v1.OriginateCallResponse
-	78,  // 106: sipmesh.v1.ProxyControl.GetCPSStatus:output_type -> sipmesh.v1.GetCPSStatusResponse
-	102, // 107: sipmesh.v1.ProxyControl.GetClientEndpoints:output_type -> sipmesh.v1.GetClientEndpointsResponse
-	72,  // 108: sipmesh.v1.ProxyControl.DescribeTrunk:output_type -> sipmesh.v1.DescribeTrunkResponse
-	70,  // 109: sipmesh.v1.ProxyControl.TransferCall:output_type -> sipmesh.v1.TransferCallResponse
-	83,  // 110: sipmesh.v1.Pipeline.Synthesize:output_type -> sipmesh.v1.SynthesizeResponse
-	85,  // 111: sipmesh.v1.Pipeline.Transcribe:output_type -> sipmesh.v1.TranscribeResponse
-	80,  // 112: sipmesh.v1.Pipeline.GetCapability:output_type -> sipmesh.v1.Capability
-	90,  // 113: sipmesh.v1.Pipeline.Chat:output_type -> sipmesh.v1.ChatResponse
-	91,  // 114: sipmesh.v1.Pipeline.ChatStream:output_type -> sipmesh.v1.ChatStreamChunk
-	94,  // 115: sipmesh.v1.Config.ApplyConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
-	92,  // 116: sipmesh.v1.Config.GetConfigSet:output_type -> sipmesh.v1.ConfigSet
-	97,  // 117: sipmesh.v1.Config.ListVersions:output_type -> sipmesh.v1.ListVersionsResponse
-	94,  // 118: sipmesh.v1.Config.RollbackConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
-	92,  // 119: sipmesh.v1.Config.Subscribe:output_type -> sipmesh.v1.ConfigSet
-	78,  // [78:120] is the sub-list for method output_type
-	36,  // [36:78] is the sub-list for method input_type
-	36,  // [36:36] is the sub-list for extension type_name
-	36,  // [36:36] is the sub-list for extension extendee
-	0,   // [0:36] is the sub-list for field type_name
+	104, // 16: sipmesh.v1.CallRecordingDone.custom_fields:type_name -> sipmesh.v1.CallRecordingDone.CustomFieldsEntry
+	105, // 17: sipmesh.v1.CallEnded.custom_fields:type_name -> sipmesh.v1.CallEnded.CustomFieldsEntry
+	3,   // 18: sipmesh.v1.SipTraceMessage.direction:type_name -> sipmesh.v1.SipDirection
+	57,  // 19: sipmesh.v1.ListCallsResponse.calls:type_name -> sipmesh.v1.CallSummary
+	57,  // 20: sipmesh.v1.CallDetail.call:type_name -> sipmesh.v1.CallSummary
+	62,  // 21: sipmesh.v1.CallDetail.worker:type_name -> sipmesh.v1.WorkerSummary
+	62,  // 22: sipmesh.v1.ListWorkersResponse.workers:type_name -> sipmesh.v1.WorkerSummary
+	62,  // 23: sipmesh.v1.WorkerDetail.worker:type_name -> sipmesh.v1.WorkerSummary
+	6,   // 24: sipmesh.v1.TransferCallRequest.mode:type_name -> sipmesh.v1.TransferCallRequest.Mode
+	76,  // 25: sipmesh.v1.GetCPSStatusResponse.cps:type_name -> sipmesh.v1.CPSBucket
+	77,  // 26: sipmesh.v1.GetCPSStatusResponse.concurrency:type_name -> sipmesh.v1.ConcurrencyBucket
+	81,  // 27: sipmesh.v1.Capability.voices:type_name -> sipmesh.v1.Voice
+	4,   // 28: sipmesh.v1.SynthesizeRequest.codec:type_name -> sipmesh.v1.Codec
+	7,   // 29: sipmesh.v1.ChatMessage.role:type_name -> sipmesh.v1.ChatMessage.Role
+	88,  // 30: sipmesh.v1.ChatRequest.messages:type_name -> sipmesh.v1.ChatMessage
+	4,   // 31: sipmesh.v1.ChatRequest.output_codec:type_name -> sipmesh.v1.Codec
+	4,   // 32: sipmesh.v1.ChatStreamChunk.audio_codec:type_name -> sipmesh.v1.Codec
+	106, // 33: sipmesh.v1.ConfigSet.created_at:type_name -> google.protobuf.Timestamp
+	98,  // 34: sipmesh.v1.ListVersionsResponse.versions:type_name -> sipmesh.v1.ConfigSetMeta
+	106, // 35: sipmesh.v1.ConfigSetMeta.created_at:type_name -> google.protobuf.Timestamp
+	103, // 36: sipmesh.v1.GetClientEndpointsResponse.ice_servers:type_name -> sipmesh.v1.IceServer
+	8,   // 37: sipmesh.v1.Scheduler.AllocateCall:input_type -> sipmesh.v1.AllocateCallRequest
+	10,  // 38: sipmesh.v1.Scheduler.ReleaseCall:input_type -> sipmesh.v1.ReleaseCallRequest
+	14,  // 39: sipmesh.v1.Scheduler.SetCallRemote:input_type -> sipmesh.v1.SetCallRemoteRequest
+	11,  // 40: sipmesh.v1.Scheduler.PublishCallSignal:input_type -> sipmesh.v1.PublishCallSignalRequest
+	16,  // 41: sipmesh.v1.Scheduler.BridgeCalls:input_type -> sipmesh.v1.BridgeCallsRequest
+	18,  // 42: sipmesh.v1.Scheduler.SetCallHold:input_type -> sipmesh.v1.SetCallHoldRequest
+	20,  // 43: sipmesh.v1.Scheduler.SetCallCustomField:input_type -> sipmesh.v1.SetCallCustomFieldRequest
+	22,  // 44: sipmesh.v1.Scheduler.SwitchCallCodec:input_type -> sipmesh.v1.SwitchCallCodecRequest
+	24,  // 45: sipmesh.v1.Edge.StartCall:input_type -> sipmesh.v1.StartCallRequest
+	26,  // 46: sipmesh.v1.Edge.CancelCall:input_type -> sipmesh.v1.CancelCallRequest
+	28,  // 47: sipmesh.v1.Edge.SetRemote:input_type -> sipmesh.v1.SetRemoteRequest
+	38,  // 48: sipmesh.v1.Edge.TapCall:input_type -> sipmesh.v1.TapCallRequest
+	30,  // 49: sipmesh.v1.Edge.BridgeCalls:input_type -> sipmesh.v1.EdgeBridgeCallsRequest
+	32,  // 50: sipmesh.v1.Edge.SetCallHold:input_type -> sipmesh.v1.EdgeSetCallHoldRequest
+	34,  // 51: sipmesh.v1.Edge.SwitchCallCodec:input_type -> sipmesh.v1.EdgeSwitchCallCodecRequest
+	36,  // 52: sipmesh.v1.Edge.SetCallCustomField:input_type -> sipmesh.v1.EdgeSetCallCustomFieldRequest
+	40,  // 53: sipmesh.v1.Registry.Register:input_type -> sipmesh.v1.WorkerHello
+	43,  // 54: sipmesh.v1.Registry.CallEvents:input_type -> sipmesh.v1.CallEvent
+	55,  // 55: sipmesh.v1.Admin.ListCalls:input_type -> sipmesh.v1.ListCallsRequest
+	58,  // 56: sipmesh.v1.Admin.DescribeCall:input_type -> sipmesh.v1.DescribeCallRequest
+	60,  // 57: sipmesh.v1.Admin.ListWorkers:input_type -> sipmesh.v1.ListWorkersRequest
+	63,  // 58: sipmesh.v1.Admin.DescribeWorker:input_type -> sipmesh.v1.DescribeWorkerRequest
+	54,  // 59: sipmesh.v1.Admin.SubscribeEvents:input_type -> sipmesh.v1.SubscribeEventsRequest
+	65,  // 60: sipmesh.v1.Admin.ForceReleaseCall:input_type -> sipmesh.v1.ForceReleaseCallRequest
+	67,  // 61: sipmesh.v1.Admin.DrainWorker:input_type -> sipmesh.v1.DrainWorkerRequest
+	51,  // 62: sipmesh.v1.Admin.TapCall:input_type -> sipmesh.v1.AdminTapCallRequest
+	52,  // 63: sipmesh.v1.SipTrace.Subscribe:input_type -> sipmesh.v1.SipTraceRequest
+	73,  // 64: sipmesh.v1.ProxyControl.OriginateCall:input_type -> sipmesh.v1.OriginateCallRequest
+	75,  // 65: sipmesh.v1.ProxyControl.GetCPSStatus:input_type -> sipmesh.v1.GetCPSStatusRequest
+	101, // 66: sipmesh.v1.ProxyControl.GetClientEndpoints:input_type -> sipmesh.v1.GetClientEndpointsRequest
+	71,  // 67: sipmesh.v1.ProxyControl.DescribeTrunk:input_type -> sipmesh.v1.DescribeTrunkRequest
+	69,  // 68: sipmesh.v1.ProxyControl.TransferCall:input_type -> sipmesh.v1.TransferCallRequest
+	82,  // 69: sipmesh.v1.Pipeline.Synthesize:input_type -> sipmesh.v1.SynthesizeRequest
+	84,  // 70: sipmesh.v1.Pipeline.Transcribe:input_type -> sipmesh.v1.AudioFrame
+	79,  // 71: sipmesh.v1.Pipeline.GetCapability:input_type -> sipmesh.v1.GetCapabilityRequest
+	89,  // 72: sipmesh.v1.Pipeline.Chat:input_type -> sipmesh.v1.ChatRequest
+	89,  // 73: sipmesh.v1.Pipeline.ChatStream:input_type -> sipmesh.v1.ChatRequest
+	93,  // 74: sipmesh.v1.Config.ApplyConfigSet:input_type -> sipmesh.v1.ApplyConfigSetRequest
+	95,  // 75: sipmesh.v1.Config.GetConfigSet:input_type -> sipmesh.v1.GetConfigSetRequest
+	96,  // 76: sipmesh.v1.Config.ListVersions:input_type -> sipmesh.v1.ListVersionsRequest
+	99,  // 77: sipmesh.v1.Config.RollbackConfigSet:input_type -> sipmesh.v1.RollbackConfigSetRequest
+	100, // 78: sipmesh.v1.Config.Subscribe:input_type -> sipmesh.v1.SubscribeConfigRequest
+	9,   // 79: sipmesh.v1.Scheduler.AllocateCall:output_type -> sipmesh.v1.AllocateCallResponse
+	13,  // 80: sipmesh.v1.Scheduler.ReleaseCall:output_type -> sipmesh.v1.ReleaseCallResponse
+	15,  // 81: sipmesh.v1.Scheduler.SetCallRemote:output_type -> sipmesh.v1.SetCallRemoteResponse
+	12,  // 82: sipmesh.v1.Scheduler.PublishCallSignal:output_type -> sipmesh.v1.PublishCallSignalResponse
+	17,  // 83: sipmesh.v1.Scheduler.BridgeCalls:output_type -> sipmesh.v1.BridgeCallsResponse
+	19,  // 84: sipmesh.v1.Scheduler.SetCallHold:output_type -> sipmesh.v1.SetCallHoldResponse
+	21,  // 85: sipmesh.v1.Scheduler.SetCallCustomField:output_type -> sipmesh.v1.SetCallCustomFieldResponse
+	23,  // 86: sipmesh.v1.Scheduler.SwitchCallCodec:output_type -> sipmesh.v1.SwitchCallCodecResponse
+	25,  // 87: sipmesh.v1.Edge.StartCall:output_type -> sipmesh.v1.StartCallResponse
+	27,  // 88: sipmesh.v1.Edge.CancelCall:output_type -> sipmesh.v1.CancelCallResponse
+	29,  // 89: sipmesh.v1.Edge.SetRemote:output_type -> sipmesh.v1.SetRemoteResponse
+	39,  // 90: sipmesh.v1.Edge.TapCall:output_type -> sipmesh.v1.TapFrame
+	31,  // 91: sipmesh.v1.Edge.BridgeCalls:output_type -> sipmesh.v1.EdgeBridgeCallsResponse
+	33,  // 92: sipmesh.v1.Edge.SetCallHold:output_type -> sipmesh.v1.EdgeSetCallHoldResponse
+	35,  // 93: sipmesh.v1.Edge.SwitchCallCodec:output_type -> sipmesh.v1.EdgeSwitchCallCodecResponse
+	37,  // 94: sipmesh.v1.Edge.SetCallCustomField:output_type -> sipmesh.v1.EdgeSetCallCustomFieldResponse
+	42,  // 95: sipmesh.v1.Registry.Register:output_type -> sipmesh.v1.WorkerAck
+	50,  // 96: sipmesh.v1.Registry.CallEvents:output_type -> sipmesh.v1.CallEventsAck
+	56,  // 97: sipmesh.v1.Admin.ListCalls:output_type -> sipmesh.v1.ListCallsResponse
+	59,  // 98: sipmesh.v1.Admin.DescribeCall:output_type -> sipmesh.v1.CallDetail
+	61,  // 99: sipmesh.v1.Admin.ListWorkers:output_type -> sipmesh.v1.ListWorkersResponse
+	64,  // 100: sipmesh.v1.Admin.DescribeWorker:output_type -> sipmesh.v1.WorkerDetail
+	43,  // 101: sipmesh.v1.Admin.SubscribeEvents:output_type -> sipmesh.v1.CallEvent
+	66,  // 102: sipmesh.v1.Admin.ForceReleaseCall:output_type -> sipmesh.v1.ForceReleaseCallResponse
+	68,  // 103: sipmesh.v1.Admin.DrainWorker:output_type -> sipmesh.v1.DrainWorkerResponse
+	39,  // 104: sipmesh.v1.Admin.TapCall:output_type -> sipmesh.v1.TapFrame
+	53,  // 105: sipmesh.v1.SipTrace.Subscribe:output_type -> sipmesh.v1.SipTraceMessage
+	74,  // 106: sipmesh.v1.ProxyControl.OriginateCall:output_type -> sipmesh.v1.OriginateCallResponse
+	78,  // 107: sipmesh.v1.ProxyControl.GetCPSStatus:output_type -> sipmesh.v1.GetCPSStatusResponse
+	102, // 108: sipmesh.v1.ProxyControl.GetClientEndpoints:output_type -> sipmesh.v1.GetClientEndpointsResponse
+	72,  // 109: sipmesh.v1.ProxyControl.DescribeTrunk:output_type -> sipmesh.v1.DescribeTrunkResponse
+	70,  // 110: sipmesh.v1.ProxyControl.TransferCall:output_type -> sipmesh.v1.TransferCallResponse
+	83,  // 111: sipmesh.v1.Pipeline.Synthesize:output_type -> sipmesh.v1.SynthesizeResponse
+	85,  // 112: sipmesh.v1.Pipeline.Transcribe:output_type -> sipmesh.v1.TranscribeResponse
+	80,  // 113: sipmesh.v1.Pipeline.GetCapability:output_type -> sipmesh.v1.Capability
+	90,  // 114: sipmesh.v1.Pipeline.Chat:output_type -> sipmesh.v1.ChatResponse
+	91,  // 115: sipmesh.v1.Pipeline.ChatStream:output_type -> sipmesh.v1.ChatStreamChunk
+	94,  // 116: sipmesh.v1.Config.ApplyConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
+	92,  // 117: sipmesh.v1.Config.GetConfigSet:output_type -> sipmesh.v1.ConfigSet
+	97,  // 118: sipmesh.v1.Config.ListVersions:output_type -> sipmesh.v1.ListVersionsResponse
+	94,  // 119: sipmesh.v1.Config.RollbackConfigSet:output_type -> sipmesh.v1.ApplyConfigSetResponse
+	92,  // 120: sipmesh.v1.Config.Subscribe:output_type -> sipmesh.v1.ConfigSet
+	79,  // [79:121] is the sub-list for method output_type
+	37,  // [37:79] is the sub-list for method input_type
+	37,  // [37:37] is the sub-list for extension type_name
+	37,  // [37:37] is the sub-list for extension extendee
+	0,   // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_sipmesh_v1_sipmesh_proto_init() }
@@ -7819,7 +7903,7 @@ func file_sipmesh_v1_sipmesh_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sipmesh_v1_sipmesh_proto_rawDesc), len(file_sipmesh_v1_sipmesh_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   97,
+			NumMessages:   98,
 			NumExtensions: 0,
 			NumServices:   8,
 		},

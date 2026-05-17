@@ -619,6 +619,44 @@ message CallRecordingDone {
   // CDR.transcript_uri so frontend renders subtitles next to the
   // WAV without re-parsing CallTranscript events.
   string transcript_uri = 4;
+
+  // Per-RecordStep enrichments — populated only for recordings
+  // produced by an explicit RecordStep in the pipeline (vs the
+  // whole-call passive recording that fires on every dialog).
+  // Whole-call recordings emit only fields 1-4 with these empty
+  // so existing CDR consumers don't see surprise diffs.
+  //
+  // outcome — free-form tag the operator set on the RecordStep
+  // (`voicemail` / `feedback` / `qa_recording` etc). Engine
+  // doesn't interpret; downstream consumers (frontend fan-out,
+  // analytics, CRM webhooks) route by this.
+  string outcome = 5;
+  // transcript — STT text from RecordStep.transcribe=true. Empty
+  // when transcribe was off, the STT pass failed, or the WAV had
+  // no recognisable audio. Surfaces in Telegram voicemail previews
+  // and frontend "call list" rows without an extra GET on the
+  // sidecar JSON.
+  string transcript = 6;
+  // wav_url — when RecordStep.s3_destination was set and the
+  // upload succeeded, the `s3://bucket/<operator-key>` URI of the
+  // operator-controlled WAV destination. Distinct from `uri`
+  // (field 1) which is the canonical whole-call archive path.
+  // Both can be populated when a RecordStep produced an artefact
+  // separately from the call's whole-call recording.
+  string wav_url = 7;
+  // sidecar_json_url — `<wav>.json` next to wav_url when
+  // RecordStep.emit_sidecar_json was on. Single-fetch pickup point
+  // for offline analytics pipelines (CustomFields + metadata +
+  // transcript in one file).
+  string sidecar_json_url = 8;
+  // custom_fields — snapshot of CallState.CustomFields at the
+  // moment the RecordStep finished. Includes attrs the LLM
+  // populated via the ConverseStep <DONE attrs/> marker
+  // (caller_name, purpose, etc — pipeline-author schema, engine
+  // does not validate keys). Frontend uses these to populate
+  // "call summary" rows without parsing audio or the sidecar
+  // JSON.
+  map<string, string> custom_fields = 9;
 }
 message CallEnded {
   string reason      = 1;

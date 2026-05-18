@@ -254,6 +254,213 @@ func TestComputeETag_DeterministicAcrossClones(t *testing.T) {
 	}
 }
 
+// -- Live-state coverage -------------------------------------------
+
+func TestListCalls_EmptyBeforeSeed(t *testing.T) {
+	t.Parallel()
+	cli, _, stop := startBufconn(t)
+	defer stop()
+
+	resp, err := cli.ListCalls(context.Background(), &sipmeshapiv1.ListCallsRequest{})
+	if err != nil {
+		t.Fatalf("ListCalls: %v", err)
+	}
+	if len(resp.GetCalls()) != 0 {
+		t.Errorf("ListCalls before seed: got %d calls, want 0", len(resp.GetCalls()))
+	}
+}
+
+func TestSeedCalls_ListAndFilterAndGet(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	seeded := s.seedCalls([]*sipmeshapiv1.CallSummary{
+		{InternalCallId: "call-1", Worker: "w-a", Trunk: "t-1", Flow: "voicebot", State: "answered"},
+		{InternalCallId: "call-2", Worker: "w-b", Trunk: "t-1", Flow: "voicebot", State: "ringing"},
+		{InternalCallId: "call-3", Worker: "w-a", Trunk: "t-2", Flow: "answering_machine", State: "answered"},
+		{InternalCallId: "", Worker: "should-be-dropped"}, // missing id → drop
+	})
+	if seeded != 3 {
+		t.Fatalf("seedCalls accepted=%d, want 3 (4th has empty id)", seeded)
+	}
+
+	// Unfiltered.
+	resp, err := cli.ListCalls(context.Background(), &sipmeshapiv1.ListCallsRequest{})
+	if err != nil {
+		t.Fatalf("ListCalls: %v", err)
+	}
+	if len(resp.GetCalls()) != 3 {
+		t.Fatalf("unfiltered ListCalls got %d, want 3", len(resp.GetCalls()))
+	}
+
+	// Filter by worker.
+	resp, _ = cli.ListCalls(context.Background(), &sipmeshapiv1.ListCallsRequest{Worker: "w-a"})
+	if got := len(resp.GetCalls()); got != 2 {
+		t.Errorf("worker=w-a got %d, want 2", got)
+	}
+
+	// Filter by trunk + limit.
+	resp, _ = cli.ListCalls(context.Background(), &sipmeshapiv1.ListCallsRequest{Trunk: "t-1", Limit: 1})
+	if got := len(resp.GetCalls()); got != 1 {
+		t.Errorf("trunk=t-1 limit=1 got %d, want 1", got)
+	}
+
+	// GetCall hits.
+	detail, err := cli.GetCall(context.Background(), &sipmeshapiv1.GetCallRequest{InternalCallId: "call-2"})
+	if err != nil {
+		t.Fatalf("GetCall call-2: %v", err)
+	}
+	if detail.GetSummary().GetWorker() != "w-b" {
+		t.Errorf("call-2 worker=%q, want w-b", detail.GetSummary().GetWorker())
+	}
+
+	// GetCall miss.
+	_, err = cli.GetCall(context.Background(), &sipmeshapiv1.GetCallRequest{InternalCallId: "ghost"})
+	if status.Code(err) != codes.NotFound {
+		t.Errorf("GetCall ghost: got code %s, want NotFound", status.Code(err))
+	}
+}
+
+func TestHangupCall_RemovesFromList(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.seedCalls([]*sipmeshapiv1.CallSummary{
+		{InternalCallId: "call-1", Worker: "w-a"},
+		{InternalCallId: "call-2", Worker: "w-b"},
+	})
+
+	resp, err := cli.HangupCall(context.Background(), &sipmeshapiv1.HangupCallRequest{
+		InternalCallId: "call-1", Reason: "test",
+	})
+	if err != nil {
+		t.Fatalf("HangupCall: %v", err)
+	}
+	if !resp.GetFound() {
+		t.Error("HangupCall.Found=false, want true")
+	}
+	if resp.GetPriorWorker() != "w-a" {
+		t.Errorf("PriorWorker=%q, want w-a", resp.GetPriorWorker())
+	}
+
+	// Now ListCalls should show only call-2.
+	lresp, _ := cli.ListCalls(context.Background(), &sipmeshapiv1.ListCallsRequest{})
+	if got := len(lresp.GetCalls()); got != 1 || lresp.GetCalls()[0].GetInternalCallId() != "call-2" {
+		t.Errorf("post-hangup list=%v, want exactly call-2", lresp.GetCalls())
+	}
+
+	// Hangup of missing call → Found=false.
+	resp, _ = cli.HangupCall(context.Background(), &sipmeshapiv1.HangupCallRequest{InternalCallId: "ghost"})
+	if resp.GetFound() {
+		t.Error("HangupCall(ghost).Found=true, want false")
+	}
+}
+
+func TestWorkers_SeedListGetDrain(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.seedWorkers([]*sipmeshapiv1.WorkerSummaryV2{
+		{Id: "edge-a", GrpcAddr: "10.0.0.1:50050", MaxConcurrent: 100, ActiveCalls: 7},
+		{Id: "edge-b", GrpcAddr: "10.0.0.2:50050", MaxConcurrent: 100, ActiveCalls: 3},
+	})
+
+	resp, err := cli.ListWorkers(context.Background(), &sipmeshapiv1.ListWorkersRequest{})
+	if err != nil {
+		t.Fatalf("ListWorkers: %v", err)
+	}
+	if len(resp.GetWorkers()) != 2 {
+		t.Errorf("ListWorkers got %d, want 2", len(resp.GetWorkers()))
+	}
+
+	d, err := cli.GetWorker(context.Background(), &sipmeshapiv1.GetWorkerRequest{Id: "edge-b"})
+	if err != nil {
+		t.Fatalf("GetWorker: %v", err)
+	}
+	if d.GetSummary().GetActiveCalls() != 3 {
+		t.Errorf("active_calls=%d, want 3", d.GetSummary().GetActiveCalls())
+	}
+
+	// Drain requires confirm=true.
+	if _, err := cli.DrainWorker(context.Background(), &sipmeshapiv1.DrainWorkerRequest{Id: "edge-a"}); status.Code(err) != codes.FailedPrecondition {
+		t.Errorf("DrainWorker without confirm: got %s, want FailedPrecondition", status.Code(err))
+	}
+
+	dr, err := cli.DrainWorker(context.Background(), &sipmeshapiv1.DrainWorkerRequest{Id: "edge-a", Confirm: true})
+	if err != nil {
+		t.Fatalf("DrainWorker: %v", err)
+	}
+	if !dr.GetOk() {
+		t.Error("DrainWorker.Ok=false, want true")
+	}
+
+	// edge-a gone.
+	resp, _ = cli.ListWorkers(context.Background(), &sipmeshapiv1.ListWorkersRequest{})
+	if len(resp.GetWorkers()) != 1 || resp.GetWorkers()[0].GetId() != "edge-b" {
+		t.Errorf("post-drain workers=%v, want only edge-b", resp.GetWorkers())
+	}
+}
+
+func TestAIWorkers_SeedAndList(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.seedAIWorkers([]*sipmeshapiv1.AIWorkerCapability{
+		{
+			PoolLabel: "cloud-premium",
+			Voices: []*sipmeshapiv1.VoiceInfo{
+				{Id: "en-Neural2-F", Language: "en-US", Gender: "F", Tier: "Neural2"},
+			},
+			LlmModels:     []string{"gemini-1.5-pro"},
+			MaxConcurrent: 50,
+			ActiveWorkers: 2,
+		},
+		{
+			PoolLabel:     "local-standard",
+			LlmModels:     []string{"qwen3.5:9b"},
+			MaxConcurrent: 10,
+			ActiveWorkers: 1,
+		},
+	})
+
+	resp, err := cli.ListAIWorkers(context.Background(), &sipmeshapiv1.ListAIWorkersRequest{})
+	if err != nil {
+		t.Fatalf("ListAIWorkers: %v", err)
+	}
+	if len(resp.GetWorkers()) != 2 {
+		t.Fatalf("ListAIWorkers got %d pools, want 2", len(resp.GetWorkers()))
+	}
+	if resp.GetWorkers()[0].GetPoolLabel() != "cloud-premium" {
+		t.Errorf("first pool=%q, want cloud-premium", resp.GetWorkers()[0].GetPoolLabel())
+	}
+}
+
+func TestReset_WipesLiveState(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.seedCalls([]*sipmeshapiv1.CallSummary{{InternalCallId: "x", Worker: "w"}})
+	s.seedWorkers([]*sipmeshapiv1.WorkerSummaryV2{{Id: "w"}})
+	s.seedAIWorkers([]*sipmeshapiv1.AIWorkerCapability{{PoolLabel: "p"}})
+
+	s.reset()
+
+	if lr, _ := cli.ListCalls(context.Background(), &sipmeshapiv1.ListCallsRequest{}); len(lr.GetCalls()) != 0 {
+		t.Error("post-reset calls non-empty")
+	}
+	if wr, _ := cli.ListWorkers(context.Background(), &sipmeshapiv1.ListWorkersRequest{}); len(wr.GetWorkers()) != 0 {
+		t.Error("post-reset workers non-empty")
+	}
+	if ar, _ := cli.ListAIWorkers(context.Background(), &sipmeshapiv1.ListAIWorkersRequest{}); len(ar.GetWorkers()) != 0 {
+		t.Error("post-reset ai-workers non-empty")
+	}
+}
+
 // validPipeline returns a minimal pipeline that passes
 // validate.OperatorConfig. Two steps to satisfy the "no steps"
 // check; both step kinds carry their required fields.

@@ -66,6 +66,72 @@ func newSeedServer(addr string, s *server, log *slog.Logger) *http.Server {
 		})
 	})
 
+	mux.HandleFunc("POST /__seed/calls", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Calls []json.RawMessage `json:"calls"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			httpError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		calls := make([]*sipmeshapiv1.CallSummary, 0, len(body.Calls))
+		for _, raw := range body.Calls {
+			var c sipmeshapiv1.CallSummary
+			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, &c); err != nil {
+				httpError(w, http.StatusBadRequest, "call entry: "+err.Error())
+				return
+			}
+			calls = append(calls, &c)
+		}
+		count := s.seedCalls(calls)
+		log.Info("seed: calls replaced", "count", count)
+		writeJSON(w, http.StatusOK, map[string]any{"seeded": count})
+	})
+
+	mux.HandleFunc("POST /__seed/workers", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Workers []json.RawMessage `json:"workers"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			httpError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		workers := make([]*sipmeshapiv1.WorkerSummaryV2, 0, len(body.Workers))
+		for _, raw := range body.Workers {
+			var x sipmeshapiv1.WorkerSummaryV2
+			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, &x); err != nil {
+				httpError(w, http.StatusBadRequest, "worker entry: "+err.Error())
+				return
+			}
+			workers = append(workers, &x)
+		}
+		count := s.seedWorkers(workers)
+		log.Info("seed: workers replaced", "count", count)
+		writeJSON(w, http.StatusOK, map[string]any{"seeded": count})
+	})
+
+	mux.HandleFunc("POST /__seed/ai-workers", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Workers []json.RawMessage `json:"workers"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			httpError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		pools := make([]*sipmeshapiv1.AIWorkerCapability, 0, len(body.Workers))
+		for _, raw := range body.Workers {
+			var p sipmeshapiv1.AIWorkerCapability
+			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, &p); err != nil {
+				httpError(w, http.StatusBadRequest, "ai-worker entry: "+err.Error())
+				return
+			}
+			pools = append(pools, &p)
+		}
+		count := s.seedAIWorkers(pools)
+		log.Info("seed: ai-workers replaced", "count", count)
+		writeJSON(w, http.StatusOK, map[string]any{"seeded": count})
+	})
+
 	mux.HandleFunc("POST /__seed/dry-run-validate", func(w http.ResponseWriter, r *http.Request) {
 		cfg, err := readOperatorConfig(r)
 		if err != nil {
@@ -90,6 +156,19 @@ func newSeedServer(addr string, s *server, log *slog.Logger) *http.Server {
 		Addr:    addr,
 		Handler: mux,
 	}
+}
+
+// decodeJSON reads at most 1 MiB of request body and decodes it into
+// dst. Used by the live-state seed endpoints which carry envelopes of
+// `{"calls": [...], ...}` rather than a single top-level proto
+// message. (operator-config seeds protojson directly via
+// readOperatorConfig.)
+func decodeJSON(r *http.Request, dst any) error {
+	body, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(body, dst)
 }
 
 func readOperatorConfig(r *http.Request) (*sipmeshapiv1.OperatorConfig, error) {

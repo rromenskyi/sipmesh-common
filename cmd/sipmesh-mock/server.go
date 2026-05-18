@@ -86,7 +86,39 @@ type server struct {
 	workers   []*sipmeshapiv1.WorkerSummaryV2
 	aiWorkers []*sipmeshapiv1.AIWorkerCapability
 
+	// events is the canned event sequence the next SubscribeEvents
+	// stream emits. Frontend seeds the slice, mock yields each entry
+	// in order then closes the stream (emit-then-EOF semantics —
+	// enough for SSE-end-to-end tests that just assert delivery).
+	events []*sipmeshapiv1.Event
+
+	// archive is the canned call-archive list ListCallArchive
+	// returns; artifacts is a (call_id, kind) → blob store the
+	// `/__artifact/{key}` HTTP handler serves on GetCallArtifactURL
+	// requests. Mock synthesises the URL pointing back at its own
+	// seed HTTP server so the frontend can fetch the artefact
+	// without S3 wiring.
+	archive   []*sipmeshapiv1.CallArchiveSummary
+	artifacts map[string]archiveArtifact
+
+	// seedHostHint is the host:port main.go bound the HTTP seed
+	// listener to (e.g. "127.0.0.1:50052"). GetCallArtifactURL
+	// rewrites this into the response URL so the browser fetches
+	// artefacts straight from the mock's HTTP port. Empty string
+	// = HTTP seed server disabled at startup; GetCallArtifactURL
+	// then returns FailedPrecondition (mirrors engine behaviour
+	// when S3 archive isn't configured).
+	seedHostHint string
+
 	log *slog.Logger
+}
+
+// archiveArtifact pairs the raw bytes with the content type so the
+// `/__artifact/{key}` HTTP handler can emit the right Content-Type
+// header (browser cares for `<audio>` playback).
+type archiveArtifact struct {
+	body        []byte
+	contentType string
 }
 
 // newServer constructs a mock with empty state. All groups start at
@@ -94,10 +126,22 @@ type server struct {
 // a matching parent_version=0 advances to version 1.
 func newServer(log *slog.Logger) *server {
 	return &server{
-		groups: make(map[string]*configSet),
-		calls:  make(map[string]*sipmeshapiv1.CallSummary),
-		log:    log,
+		groups:    make(map[string]*configSet),
+		calls:     make(map[string]*sipmeshapiv1.CallSummary),
+		artifacts: make(map[string]archiveArtifact),
+		log:       log,
 	}
+}
+
+// setSeedHostHint records the host:port the HTTP seed server bound
+// to. GetCallArtifactURL uses it as the host portion of the returned
+// URL so the browser can fetch the seeded blob via the mock's own
+// /__artifact handler. Pass an empty string when --seed-addr was
+// disabled — the RPC then errors FailedPrecondition.
+func (s *server) setSeedHostHint(hostPort string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seedHostHint = hostPort
 }
 
 // reset wipes all in-memory state. Exposed for the seed/admin HTTP
@@ -111,6 +155,63 @@ func (s *server) reset() {
 	s.callOrder = nil
 	s.workers = nil
 	s.aiWorkers = nil
+	s.events = nil
+	s.archive = nil
+	s.artifacts = make(map[string]archiveArtifact)
+}
+
+// seedEvents replaces the canned SubscribeEvents queue.
+func (s *server) seedEvents(events []*sipmeshapiv1.Event) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = nil
+	for _, e := range events {
+		s.events = append(s.events, proto.Clone(e).(*sipmeshapiv1.Event))
+	}
+	return len(s.events)
+}
+
+// seedCallArchive replaces the canned ListCallArchive page + the
+// per-(call_id, kind) artifact blob store. The artifacts map's key
+// shape is artifactKey(call_id, kind); each entry pairs the bytes
+// the seed HTTP server returns with the content-type
+// GetCallArtifactURL announces.
+func (s *server) seedCallArchive(rows []*sipmeshapiv1.CallArchiveSummary, artifacts map[string]archiveArtifact) (int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.archive = nil
+	for _, r := range rows {
+		s.archive = append(s.archive, proto.Clone(r).(*sipmeshapiv1.CallArchiveSummary))
+	}
+	s.artifacts = make(map[string]archiveArtifact, len(artifacts))
+	for k, a := range artifacts {
+		s.artifacts[k] = archiveArtifact{
+			body:        append([]byte(nil), a.body...),
+			contentType: a.contentType,
+		}
+	}
+	return len(s.archive), len(s.artifacts)
+}
+
+// artifactKey is the lookup key used by both the seed-time store
+// and the per-request GetCallArtifactURL → /__artifact/<key> path.
+// Stable encoding so tests can pre-compute the URL the mock will
+// emit.
+func artifactKey(callID string, kind sipmeshapiv1.CallArtifactKind) string {
+	return callID + ":" + kind.String()
+}
+
+// getArtifact returns the seeded artifact for (call_id, kind), or
+// (nil, "", false) when no such entry exists. Used by the HTTP
+// /__artifact handler.
+func (s *server) getArtifact(key string) ([]byte, string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	a, ok := s.artifacts[key]
+	if !ok {
+		return nil, "", false
+	}
+	return append([]byte(nil), a.body...), a.contentType, true
 }
 
 // seedCalls wholesale-replaces the live calls fixture. Empty input
@@ -796,12 +897,98 @@ func (s *server) ListAIWorkers(ctx context.Context, req *sipmeshapiv1.ListAIWork
 	return &sipmeshapiv1.ListAIWorkersResponse{Workers: out}, nil
 }
 
+// -- Streaming events + call archive --------------------------------
+
+// SubscribeEvents emits the canned event queue then returns. No
+// keep-alive, no live event delivery — frontend tests assert
+// SSE-end-to-end against this one-shot drain. Topics filter applies
+// as AND on Event.topic (empty topics list = no filter).
+func (s *server) SubscribeEvents(req *sipmeshapiv1.SubscribeEventsRequest, stream grpc.ServerStreamingServer[sipmeshapiv1.Event]) error {
+	s.mu.RLock()
+	queue := make([]*sipmeshapiv1.Event, 0, len(s.events))
+	for _, e := range s.events {
+		queue = append(queue, proto.Clone(e).(*sipmeshapiv1.Event))
+	}
+	s.mu.RUnlock()
+
+	topics := req.GetTopics()
+	want := make(map[string]struct{}, len(topics))
+	for _, t := range topics {
+		want[t] = struct{}{}
+	}
+	for _, e := range queue {
+		if len(want) > 0 {
+			if _, ok := want[e.GetTopic()]; !ok {
+				continue
+			}
+		}
+		if err := stream.Send(e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListCallArchive paginates the seeded archive list. page_size=0
+// returns everything (matches the engine's "small archives don't
+// need paging" shape). The page_token field is honoured for
+// completeness — empty in → first page, empty out → done.
+func (s *server) ListCallArchive(ctx context.Context, req *sipmeshapiv1.ListCallArchiveRequest) (*sipmeshapiv1.ListCallArchiveResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*sipmeshapiv1.CallArchiveSummary, 0, len(s.archive))
+	for _, r := range s.archive {
+		out = append(out, proto.Clone(r).(*sipmeshapiv1.CallArchiveSummary))
+	}
+	limit := int(req.GetPageSize())
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return &sipmeshapiv1.ListCallArchiveResponse{Calls: out}, nil
+}
+
+// GetCallArtifactURL synthesises a URL pointing back at the mock's
+// own HTTP seed server (`/__artifact/<key>`). The key is the same
+// shape seedCallArchive used so frontend test fixtures can predict
+// it offline if they need to assert URL shape directly.
+//
+// `seedAddr` from main flows in via the seedHostHint field set by
+// newSeedServer when the HTTP listener binds; when the seed port
+// is disabled (--seed-addr=""), this RPC returns FailedPrecondition
+// the same way the real engine does when S3 archive isn't wired.
+func (s *server) GetCallArtifactURL(ctx context.Context, req *sipmeshapiv1.GetCallArtifactURLRequest) (*sipmeshapiv1.GetCallArtifactURLResponse, error) {
+	key := artifactKey(req.GetCallId(), req.GetKind())
+	s.mu.RLock()
+	a, ok := s.artifacts[key]
+	hint := s.seedHostHint
+	s.mu.RUnlock()
+	if hint == "" {
+		return nil, status.Error(codes.FailedPrecondition,
+			"call archive not wired in this mock (--seed-addr was disabled, so no /__artifact handler exists)")
+	}
+	if !ok {
+		return nil, status.Errorf(codes.NotFound,
+			"no seeded artifact for call %q kind %s", req.GetCallId(), req.GetKind().String())
+	}
+	ttl := int(req.GetTtlSeconds())
+	if ttl == 0 {
+		ttl = 15 * 60
+	}
+	if ttl > 60*60 {
+		ttl = 60 * 60
+	}
+	return &sipmeshapiv1.GetCallArtifactURLResponse{
+		Url:         "http://" + hint + "/__artifact/" + key,
+		ExpiresAt:   time.Now().UTC().Add(time.Duration(ttl) * time.Second).Format(time.RFC3339),
+		ContentType: a.contentType,
+	}, nil
+}
+
 // -- Stubs (Unimplemented unless callers prove they need them) -------
 //
-// Remaining RPCs (SubscribeEvents / StreamSipTrace / archive)
-// fall through to UnimplementedOperatorAPIServer's gRPC Unimplemented
-// errors. Add per-test seed plumbing when frontend lands a test
-// that needs them.
+// Remaining RPCs (StreamSipTrace) fall through to
+// UnimplementedOperatorAPIServer's Unimplemented errors. Add per-
+// test seed plumbing when frontend lands a test that needs it.
 
 // register binds the server's RPC handlers to the gRPC server.
 func (s *server) register(g *grpc.Server) {

@@ -86,6 +86,17 @@ func main() {
 	var httpSrv *http.Server
 	if *seedAddr != "" {
 		httpSrv = newSeedServer(*seedAddr, srv, log)
+		// Inform the gRPC server which host:port the seed HTTP
+		// listener is on. GetCallArtifactURL synthesises URLs
+		// rooted at that host so the browser can fetch the
+		// /__artifact/<key> blob directly. The bind addr may be
+		// ":50052" (any iface) — we leave the host portion empty
+		// in that case so the URL ends up scheme-relative-ish
+		// (`http://:50052/...`), which browsers in a docker
+		// network resolve via the container hostname they
+		// reached the mock on. Callers that need an explicit
+		// hostname can pass --seed-addr=host:port.
+		srv.setSeedHostHint(*seedAddr)
 		go func() {
 			log.Info("seed HTTP listener bound", "addr", *seedAddr)
 			if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

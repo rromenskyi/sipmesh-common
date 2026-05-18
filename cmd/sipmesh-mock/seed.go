@@ -32,6 +32,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -130,6 +131,104 @@ func newSeedServer(addr string, s *server, log *slog.Logger) *http.Server {
 		count := s.seedAIWorkers(pools)
 		log.Info("seed: ai-workers replaced", "count", count)
 		writeJSON(w, http.StatusOK, map[string]any{"seeded": count})
+	})
+
+	mux.HandleFunc("POST /__seed/events", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Events []json.RawMessage `json:"events"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			httpError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		events := make([]*sipmeshapiv1.Event, 0, len(body.Events))
+		for _, raw := range body.Events {
+			var e sipmeshapiv1.Event
+			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, &e); err != nil {
+				httpError(w, http.StatusBadRequest, "event entry: "+err.Error())
+				return
+			}
+			events = append(events, &e)
+		}
+		count := s.seedEvents(events)
+		log.Info("seed: events replaced", "count", count)
+		writeJSON(w, http.StatusOK, map[string]any{"seeded": count})
+	})
+
+	mux.HandleFunc("POST /__seed/call-archive", func(w http.ResponseWriter, r *http.Request) {
+		// Body shape:
+		//   {
+		//     "calls": [ CallArchiveSummary, ... ],
+		//     "artifacts": {
+		//       "<call_id>:<kind-enum-name>": {
+		//         "body_base64": "...",
+		//         "content_type": "audio/wav"
+		//       }
+		//     }
+		//   }
+		// kind-enum-name is the proto string form
+		// ("CALL_ARTIFACT_RECORDING" etc), matching what
+		// artifactKey() emits at runtime so tests can pre-compute
+		// the URL the mock will return.
+		var body struct {
+			Calls     []json.RawMessage `json:"calls"`
+			Artifacts map[string]struct {
+				BodyBase64  string `json:"body_base64"`
+				ContentType string `json:"content_type"`
+			} `json:"artifacts"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			httpError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		rows := make([]*sipmeshapiv1.CallArchiveSummary, 0, len(body.Calls))
+		for _, raw := range body.Calls {
+			var c sipmeshapiv1.CallArchiveSummary
+			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, &c); err != nil {
+				httpError(w, http.StatusBadRequest, "archive entry: "+err.Error())
+				return
+			}
+			rows = append(rows, &c)
+		}
+		artifacts := make(map[string]archiveArtifact, len(body.Artifacts))
+		for key, a := range body.Artifacts {
+			decoded, err := base64.StdEncoding.DecodeString(a.BodyBase64)
+			if err != nil {
+				httpError(w, http.StatusBadRequest, "artifact "+key+": invalid base64: "+err.Error())
+				return
+			}
+			artifacts[key] = archiveArtifact{
+				body:        decoded,
+				contentType: a.ContentType,
+			}
+		}
+		archiveCount, artifactCount := s.seedCallArchive(rows, artifacts)
+		log.Info("seed: call-archive replaced",
+			"archive_rows", archiveCount,
+			"artifacts", artifactCount)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"archive_rows": archiveCount,
+			"artifacts":    artifactCount,
+		})
+	})
+
+	// /__artifact/<key> — serves the raw bytes seeded via
+	// /__seed/call-archive. Key shape: "<call_id>:<KIND_ENUM_NAME>".
+	// The URL is what GetCallArtifactURL returns; <audio> tags and
+	// curl alike fetch this directly.
+	mux.HandleFunc("GET /__artifact/{key}", func(w http.ResponseWriter, r *http.Request) {
+		key := r.PathValue("key")
+		body, ct, ok := s.getArtifact(key)
+		if !ok {
+			httpError(w, http.StatusNotFound, "artifact "+key+" not seeded")
+			return
+		}
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", ct)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
 	})
 
 	mux.HandleFunc("POST /__seed/dry-run-validate", func(w http.ResponseWriter, r *http.Request) {

@@ -461,6 +461,189 @@ func TestReset_WipesLiveState(t *testing.T) {
 	}
 }
 
+// -- SubscribeEvents + ListCallArchive coverage --------------------
+
+func TestSubscribeEvents_EmitsSeededQueueThenEOF(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.seedEvents([]*sipmeshapiv1.Event{
+		{Topic: "calls", Action: "started", SubjectId: "call-1", DetailJson: `{"caller":"+1"}`},
+		{Topic: "config", Action: "applied", SubjectId: "42"},
+		{Topic: "calls", Action: "ended", SubjectId: "call-1"},
+	})
+
+	stream, err := cli.SubscribeEvents(context.Background(), &sipmeshapiv1.SubscribeEventsRequest{})
+	if err != nil {
+		t.Fatalf("SubscribeEvents: %v", err)
+	}
+
+	var got []*sipmeshapiv1.Event
+	for {
+		e, err := stream.Recv()
+		if err != nil {
+			break // EOF expected after the seeded queue drains
+		}
+		got = append(got, e)
+	}
+	if len(got) != 3 {
+		t.Fatalf("received %d events, want 3", len(got))
+	}
+	if got[0].GetTopic() != "calls" || got[0].GetAction() != "started" {
+		t.Errorf("event[0]={%s,%s}, want {calls,started}", got[0].GetTopic(), got[0].GetAction())
+	}
+	if got[2].GetSubjectId() != "call-1" {
+		t.Errorf("event[2] subject_id=%q, want call-1", got[2].GetSubjectId())
+	}
+}
+
+func TestSubscribeEvents_TopicFilterANDsOnTopic(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.seedEvents([]*sipmeshapiv1.Event{
+		{Topic: "calls", Action: "started"},
+		{Topic: "config", Action: "applied"},
+		{Topic: "trunks", Action: "registered"},
+		{Topic: "calls", Action: "ended"},
+	})
+
+	stream, _ := cli.SubscribeEvents(context.Background(), &sipmeshapiv1.SubscribeEventsRequest{
+		Topics: []string{"calls"},
+	})
+	var got []string
+	for {
+		e, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		got = append(got, e.GetTopic()+":"+e.GetAction())
+	}
+	if len(got) != 2 || got[0] != "calls:started" || got[1] != "calls:ended" {
+		t.Errorf("filtered stream=%v, want [calls:started calls:ended]", got)
+	}
+}
+
+func TestListCallArchive_SeedListAndPageSize(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	rows := []*sipmeshapiv1.CallArchiveSummary{
+		{CallId: "c-1", StartedAt: "2026-05-18T10:00:00Z", HasRecording: true},
+		{CallId: "c-2", StartedAt: "2026-05-18T10:05:00Z"},
+		{CallId: "c-3", StartedAt: "2026-05-18T10:10:00Z", HasRecording: true, HasSipTrace: true},
+	}
+	if got, _ := s.seedCallArchive(rows, nil); got != 3 {
+		t.Fatalf("seedCallArchive accepted=%d, want 3", got)
+	}
+
+	// Unlimited.
+	resp, err := cli.ListCallArchive(context.Background(), &sipmeshapiv1.ListCallArchiveRequest{})
+	if err != nil {
+		t.Fatalf("ListCallArchive: %v", err)
+	}
+	if len(resp.GetCalls()) != 3 {
+		t.Errorf("unlimited list got %d, want 3", len(resp.GetCalls()))
+	}
+
+	// page_size=2 returns first 2.
+	resp, _ = cli.ListCallArchive(context.Background(), &sipmeshapiv1.ListCallArchiveRequest{PageSize: 2})
+	if len(resp.GetCalls()) != 2 || resp.GetCalls()[0].GetCallId() != "c-1" {
+		t.Errorf("page_size=2 got %v, want [c-1, c-2]", resp.GetCalls())
+	}
+}
+
+func TestGetCallArtifactURL_SeedAndSynthesise(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.setSeedHostHint("127.0.0.1:50052")
+	s.seedCallArchive(
+		[]*sipmeshapiv1.CallArchiveSummary{{CallId: "c-1", HasRecording: true}},
+		map[string]archiveArtifact{
+			artifactKey("c-1", sipmeshapiv1.CallArtifactKind_CALL_ARTIFACT_RECORDING): {
+				body:        []byte("fake-wav-bytes"),
+				contentType: "audio/wav",
+			},
+		},
+	)
+
+	resp, err := cli.GetCallArtifactURL(context.Background(), &sipmeshapiv1.GetCallArtifactURLRequest{
+		CallId:     "c-1",
+		Kind:       sipmeshapiv1.CallArtifactKind_CALL_ARTIFACT_RECORDING,
+		StartedAt:  "2026-05-18T10:00:00Z",
+		TtlSeconds: 60,
+	})
+	if err != nil {
+		t.Fatalf("GetCallArtifactURL: %v", err)
+	}
+	wantSuffix := "/__artifact/c-1:CALL_ARTIFACT_RECORDING"
+	if !strings.HasSuffix(resp.GetUrl(), wantSuffix) {
+		t.Errorf("URL=%q, want suffix %q", resp.GetUrl(), wantSuffix)
+	}
+	if !strings.Contains(resp.GetUrl(), "127.0.0.1:50052") {
+		t.Errorf("URL=%q should contain seed-host hint", resp.GetUrl())
+	}
+	if resp.GetContentType() != "audio/wav" {
+		t.Errorf("ContentType=%q, want audio/wav", resp.GetContentType())
+	}
+	if resp.GetExpiresAt() == "" {
+		t.Error("ExpiresAt empty")
+	}
+
+	// Direct getArtifact roundtrip — the HTTP /__artifact handler
+	// reads the same store, so this proves the same bytes will be
+	// served.
+	body, ct, ok := s.getArtifact(artifactKey("c-1", sipmeshapiv1.CallArtifactKind_CALL_ARTIFACT_RECORDING))
+	if !ok || string(body) != "fake-wav-bytes" || ct != "audio/wav" {
+		t.Errorf("getArtifact mismatch: ok=%v body=%q ct=%q", ok, body, ct)
+	}
+}
+
+func TestGetCallArtifactURL_FailedPreconditionWhenSeedHostDisabled(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	// Don't call setSeedHostHint — mimics --seed-addr="".
+	s.seedCallArchive(
+		[]*sipmeshapiv1.CallArchiveSummary{{CallId: "c-1"}},
+		map[string]archiveArtifact{
+			artifactKey("c-1", sipmeshapiv1.CallArtifactKind_CALL_ARTIFACT_RECORDING): {
+				body: []byte("x"), contentType: "audio/wav",
+			},
+		},
+	)
+
+	_, err := cli.GetCallArtifactURL(context.Background(), &sipmeshapiv1.GetCallArtifactURLRequest{
+		CallId: "c-1",
+		Kind:   sipmeshapiv1.CallArtifactKind_CALL_ARTIFACT_RECORDING,
+	})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Errorf("got code %s, want FailedPrecondition", status.Code(err))
+	}
+}
+
+func TestGetCallArtifactURL_NotFoundForUnseededKey(t *testing.T) {
+	t.Parallel()
+	cli, s, stop := startBufconn(t)
+	defer stop()
+
+	s.setSeedHostHint("127.0.0.1:50052")
+	// Don't seed anything.
+	_, err := cli.GetCallArtifactURL(context.Background(), &sipmeshapiv1.GetCallArtifactURLRequest{
+		CallId: "ghost",
+		Kind:   sipmeshapiv1.CallArtifactKind_CALL_ARTIFACT_RECORDING,
+	})
+	if status.Code(err) != codes.NotFound {
+		t.Errorf("got code %s, want NotFound", status.Code(err))
+	}
+}
+
 // validPipeline returns a minimal pipeline that passes
 // validate.OperatorConfig. Two steps to satisfy the "no steps"
 // check; both step kinds carry their required fields.

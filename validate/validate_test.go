@@ -48,10 +48,13 @@ func TestOperatorConfig_AcceptsValidReceptionistShape(t *testing.T) {
 	cfg := &sipmeshapiv1.OperatorConfig{
 		Trunks: []*sipmeshapiv1.Trunk{
 			{
-				Id:   "zadarma-in",
+				Id:   "telco-out",
 				Kind: sipmeshapiv1.Trunk_KIND_REGISTER_OUTBOUND,
-				Host: "sip.zadarma.com",
-				User: "453425",
+				// sip.example.com / generic user — placeholders only.
+				// Real test stands wire their own trunk/host/user
+				// through the seed endpoint or import.
+				Host: "sip.example.com",
+				User: "operator-test",
 			},
 		},
 		Pipelines: []*sipmeshapiv1.Pipeline{
@@ -69,13 +72,15 @@ func TestOperatorConfig_AcceptsValidReceptionistShape(t *testing.T) {
 					{Branch: &sipmeshapiv1.BranchStep{
 						Cases: []*sipmeshapiv1.BranchCase{
 							{
+								// NANP fictional range (+1 555 555 01xx) keeps
+								// the test fixture obviously non-routable.
 								When: map[string]string{"custom.route": "marketing"},
 								Steps: []*sipmeshapiv1.PipelineStep{
 									{Dial: &sipmeshapiv1.DialStep{
-										Trunk:  "zadarma-in",
-										Callee: "+34662239300",
+										Trunk:  "telco-out",
+										Callee: "+15555550101",
 										CallerId: &sipmeshapiv1.CallerID{
-											User: "+13855180204",
+											User: "+15555550100",
 										},
 									}},
 								},
@@ -83,10 +88,10 @@ func TestOperatorConfig_AcceptsValidReceptionistShape(t *testing.T) {
 						},
 						DefaultSteps: []*sipmeshapiv1.PipelineStep{
 							{Dial: &sipmeshapiv1.DialStep{
-								Trunk:  "zadarma-in",
-								Callee: "+19254445028",
+								Trunk:  "telco-out",
+								Callee: "+15555550102",
 								CallerId: &sipmeshapiv1.CallerID{
-									User: "+13855180204",
+									User: "+15555550100",
 								},
 							}},
 						},

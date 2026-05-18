@@ -132,6 +132,54 @@ Same envelope shape, with `AIWorkerCapability` entries. Drives
 the pipeline-edit form depends on without bringing up a real
 ai-worker pool.
 
+### `POST /__seed/events`
+
+Replaces the canned `SubscribeEvents` queue. Body envelope:
+
+```json
+{
+  "events": [
+    { "topic": "calls", "action": "started", "subjectId": "c-1", "detailJson": "{}" },
+    { "topic": "config", "action": "applied", "subjectId": "42" }
+  ]
+}
+```
+
+`SubscribeEvents` then emits each entry in order and closes the
+stream (emit-then-EOF). Topics filter on the request ANDs against
+`Event.topic`. Use for SSE-end-to-end Playwright tests.
+
+### `POST /__seed/call-archive`
+
+Replaces the `ListCallArchive` page + per-(call_id, kind) artifact
+blob store. Body:
+
+```json
+{
+  "calls": [
+    { "callId": "c-1", "startedAt": "2026-05-18T10:00:00Z", "hasRecording": true }
+  ],
+  "artifacts": {
+    "c-1:CALL_ARTIFACT_RECORDING": {
+      "body_base64": "<base64-encoded WAV/PNG/whatever>",
+      "content_type": "audio/wav"
+    }
+  }
+}
+```
+
+Key shape on `artifacts` is `<call_id>:<KIND_ENUM_NAME>` — matches
+what `GetCallArtifactURL` looks up. After seeding,
+`GetCallArtifactURL` returns a URL of shape
+`http://<seed-host>:50052/__artifact/<key>` that the browser can
+fetch directly. The mock's HTTP server serves the seeded bytes
+with the recorded `content_type` so `<audio src=…>` and `<img src=…>`
+both work without additional plumbing.
+
+`GetCallArtifactURL` returns `FailedPrecondition` when the seed
+HTTP server is disabled (`--seed-addr=""`), matching the engine's
+behaviour when S3 archive isn't configured.
+
 ### `POST /__seed/dry-run-validate`
 
 Runs `validate.OperatorConfig` against a protojson body without
@@ -152,8 +200,9 @@ storing. Returns:
 | `ListCalls` / `GetCall` / `HangupCall` | seeded via `POST /__seed/calls` | Real call runtime not simulated; seed fixtures drive read RPCs and `HangupCall` mutates the fixture |
 | `ListWorkers` / `GetWorker` / `DrainWorker` | seeded via `POST /__seed/workers` | Same shape — fixture-driven; `DrainWorker` removes from fixture |
 | `ListAIWorkers` | seeded via `POST /__seed/ai-workers` | Fixture-driven for voice/model dropdowns |
-| `SubscribeEvents` / `StreamSipTrace` | returns `Unimplemented` | Streaming events are per-test fixtures; expand seed endpoint when needed |
-| `ListCallArchive` / `GetCallArtifactURL` | returns `Unimplemented` | No S3 |
+| `SubscribeEvents` | seeded via `POST /__seed/events` | Emit-then-EOF; good for SSE delivery assertions |
+| `ListCallArchive` / `GetCallArtifactURL` | seeded via `POST /__seed/call-archive` | Mock serves artefact bytes directly on `/__artifact/<key>` |
+| `StreamSipTrace` | returns `Unimplemented` | Per-trace fixtures land here when a Playwright test needs them |
 
 When a frontend test needs one of these, extend the seed endpoint to
 inject the canned data and update the RPC handler to read from the

@@ -461,6 +461,66 @@ func TestReset_WipesLiveState(t *testing.T) {
 	}
 }
 
+// TestWriteConfig_GroupNameConsistencyWithRead reproduces the bug
+// sipmesh-frontend caught while building their Playwright e2e stand
+// (inbox handoff 2026-05-18-mock-group-name-inconsistency.md): the
+// frontend's backend sends Group="default" on every WriteConfig but
+// GetOperatorConfigRequest has no group field, so the mock's
+// GetOperatorConfig used to read from defaultGroup="" while
+// WriteConfig keyed by req.GetGroup() — two map buckets for the
+// same logical state, OCC drift on the second write.
+//
+// Fix: normalizeGroup() collapses every caller-supplied group name
+// to the canonical single-tenant bucket. This test pins the contract
+// so a future "real multi-group" refactor can't silently re-introduce
+// the divergence.
+func TestWriteConfig_GroupNameConsistencyWithRead(t *testing.T) {
+	t.Parallel()
+	cli, _, stop := startBufconn(t)
+	defer stop()
+
+	// First write under group="default" with parent_version=0 — empty
+	// state, must succeed.
+	if _, err := cli.WriteConfig(context.Background(), &sipmeshapiv1.WriteConfigRequest{
+		Group:         "default",
+		ParentVersion: 0,
+		Ops: []*sipmeshapiv1.ConfigOp{
+			{Op: &sipmeshapiv1.ConfigOp_UpsertPipeline{
+				UpsertPipeline: validPipeline("p"),
+			}},
+		},
+	}); err != nil {
+		t.Fatalf("first WriteConfig: %v", err)
+	}
+
+	// GetOperatorConfig has no group field in its proto — frontend
+	// backend reads with the implicit empty bucket. Pre-fix, this
+	// would return version=0 and the parent_version below would be
+	// rejected as a routine write on a populated group.
+	resp, err := cli.GetOperatorConfig(context.Background(), &sipmeshapiv1.GetOperatorConfigRequest{})
+	if err != nil {
+		t.Fatalf("GetOperatorConfig: %v", err)
+	}
+	if resp.GetConfig().GetVersion() != 1 {
+		t.Fatalf("read-back version=%d, want 1 (mock must merge read+write groups into one bucket)",
+			resp.GetConfig().GetVersion())
+	}
+
+	// Second write — uses parent_version from the read above. Must
+	// succeed (mock collapsed read + write into the same bucket).
+	if _, err := cli.WriteConfig(context.Background(), &sipmeshapiv1.WriteConfigRequest{
+		Group:         "default",
+		ParentVersion: resp.GetConfig().GetVersion(),
+		Ops: []*sipmeshapiv1.ConfigOp{
+			{Op: &sipmeshapiv1.ConfigOp_DeletePipeline{
+				DeletePipeline: "p",
+			}},
+		},
+	}); err != nil {
+		t.Fatalf("second WriteConfig (delete after read): %v", err)
+	}
+}
+
 // -- SubscribeEvents + ListCallArchive coverage --------------------
 
 func TestSubscribeEvents_EmitsSeededQueueThenEOF(t *testing.T) {

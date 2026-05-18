@@ -1,0 +1,32 @@
+# sipmesh-mock — minimal OperatorAPI gRPC server for frontend test
+# stands. Distroless static image; no shell, no glibc.
+#
+# Build (from repo root):
+#   docker build -f deploy/Dockerfile.sipmesh-mock -t ghcr.io/<owner>/sipmesh-mock:<tag> .
+#
+# Run:
+#   docker run --rm -p 50051:50051 -p 50052:50052 \
+#     ghcr.io/<owner>/sipmesh-mock:<tag>
+#
+# Ports:
+#   50051 — gRPC OperatorAPI surface (frontend dials here)
+#   50052 — HTTP seed/admin endpoint (test fixtures only)
+#
+# Image is reproducible by tag — `:latest` is intentionally not
+# pushed; pin to a sipmesh-common version (matches the OperatorAPI
+# proto + validate package that ships in that release).
+
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ENV CGO_ENABLED=0 GOOS=linux
+RUN go build -trimpath -ldflags="-s -w" -o /out/sipmesh-mock ./cmd/sipmesh-mock
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/sipmesh-mock /sipmesh-mock
+USER nonroot:nonroot
+EXPOSE 50051 50052
+ENTRYPOINT ["/sipmesh-mock"]
+CMD ["--addr=:50051", "--seed-addr=:50052"]

@@ -974,7 +974,7 @@ type WriteConfigRequest struct {
 	// Audit string ("alice via console", "ci-cd nightly", etc).
 	// Recorded on the resulting OperatorConfig.applied_by.
 	AppliedBy string `protobuf:"bytes,4,opt,name=applied_by,json=appliedBy,proto3" json:"applied_by,omitempty"`
-	// Operator-readable why ("rotated zadarma password", "MVP0
+	// Operator-readable why ("rotated carrier password", "MVP0
 	// launch trunk set", etc). Stored alongside applied_by so
 	// future audit-log views can render context. Optional.
 	ChangeNote string `protobuf:"bytes,5,opt,name=change_note,json=changeNote,proto3" json:"change_note,omitempty"`

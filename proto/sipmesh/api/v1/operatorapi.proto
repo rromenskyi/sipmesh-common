@@ -141,7 +141,7 @@ message WriteConfigRequest {
   // Recorded on the resulting OperatorConfig.applied_by.
   string applied_by = 4;
 
-  // Operator-readable why ("rotated zadarma password", "MVP0
+  // Operator-readable why ("rotated carrier password", "MVP0
   // launch trunk set", etc). Stored alongside applied_by so
   // future audit-log views can render context. Optional.
   string change_note = 5;

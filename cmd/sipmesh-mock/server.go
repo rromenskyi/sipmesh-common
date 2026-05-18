@@ -66,11 +66,25 @@ type configSet struct {
 // server is the in-memory OperatorAPI implementation. One server
 // instance serves all groups; per-group state lives in `groups`
 // keyed by group name (empty string for single-tenant).
+//
+// Live state (calls / workers / ai-workers) lives outside the group
+// shape because the proto's per-resource read RPCs are flat — they
+// have no group field today. Tests seed these via the HTTP side-
+// channel before each scenario.
 type server struct {
 	sipmeshapiv1.UnimplementedOperatorAPIServer
 
 	mu     sync.RWMutex
 	groups map[string]*configSet
+
+	// calls is keyed by CallSummary.internal_call_id. Order of
+	// insertion is preserved via callOrder for stable ListCalls
+	// output (tests assert specific ordering).
+	calls     map[string]*sipmeshapiv1.CallSummary
+	callOrder []string
+
+	workers   []*sipmeshapiv1.WorkerSummaryV2
+	aiWorkers []*sipmeshapiv1.AIWorkerCapability
 
 	log *slog.Logger
 }
@@ -81,6 +95,7 @@ type server struct {
 func newServer(log *slog.Logger) *server {
 	return &server{
 		groups: make(map[string]*configSet),
+		calls:  make(map[string]*sipmeshapiv1.CallSummary),
 		log:    log,
 	}
 }
@@ -92,6 +107,51 @@ func (s *server) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.groups = make(map[string]*configSet)
+	s.calls = make(map[string]*sipmeshapiv1.CallSummary)
+	s.callOrder = nil
+	s.workers = nil
+	s.aiWorkers = nil
+}
+
+// seedCalls wholesale-replaces the live calls fixture. Empty input
+// = clear. Each call MUST have a non-empty internal_call_id; the
+// helper drops entries violating that contract and returns the
+// accepted count.
+func (s *server) seedCalls(calls []*sipmeshapiv1.CallSummary) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = make(map[string]*sipmeshapiv1.CallSummary, len(calls))
+	s.callOrder = s.callOrder[:0]
+	for _, c := range calls {
+		if c.GetInternalCallId() == "" {
+			continue
+		}
+		s.calls[c.GetInternalCallId()] = proto.Clone(c).(*sipmeshapiv1.CallSummary)
+		s.callOrder = append(s.callOrder, c.GetInternalCallId())
+	}
+	return len(s.callOrder)
+}
+
+// seedWorkers replaces the workers fixture.
+func (s *server) seedWorkers(workers []*sipmeshapiv1.WorkerSummaryV2) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workers = nil
+	for _, w := range workers {
+		s.workers = append(s.workers, proto.Clone(w).(*sipmeshapiv1.WorkerSummaryV2))
+	}
+	return len(s.workers)
+}
+
+// seedAIWorkers replaces the AI worker pools fixture.
+func (s *server) seedAIWorkers(pools []*sipmeshapiv1.AIWorkerCapability) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.aiWorkers = nil
+	for _, p := range pools {
+		s.aiWorkers = append(s.aiWorkers, proto.Clone(p).(*sipmeshapiv1.AIWorkerCapability))
+	}
+	return len(s.aiWorkers)
 }
 
 // seed wholesale-replaces a group's ConfigSet with the supplied
@@ -600,13 +660,148 @@ func (s *server) snapshot(group string) *sipmeshapiv1.OperatorConfig {
 	return cs.proto()
 }
 
+// -- Live state (calls / workers / ai-workers) ----------------------
+//
+// All four RPCs read from in-memory fixtures populated by the HTTP
+// seed endpoint (POST /__seed/calls, /__seed/workers,
+// /__seed/ai-workers). When no fixture is seeded, responses are
+// empty slices — frontend tests that depend on specific call /
+// worker rows are expected to seed them explicitly per scenario.
+//
+// HangupCall + DrainWorker are mutators: they delete the call or
+// drop the worker from the in-memory state so the next ListCalls /
+// ListWorkers reflects the change, matching the real engine's
+// observable behaviour. This lets the frontend's "hangup this call"
+// flow be tested end-to-end against the mock.
+
+func (s *server) ListCalls(ctx context.Context, req *sipmeshapiv1.ListCallsRequest) (*sipmeshapiv1.ListCallsResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	worker := req.GetWorker()
+	trunk := req.GetTrunk()
+	flow := req.GetFlow()
+	limit := int(req.GetLimit())
+
+	out := make([]*sipmeshapiv1.CallSummary, 0, len(s.callOrder))
+	for _, id := range s.callOrder {
+		c := s.calls[id]
+		if c == nil {
+			continue
+		}
+		if worker != "" && c.GetWorker() != worker {
+			continue
+		}
+		if trunk != "" && c.GetTrunk() != trunk {
+			continue
+		}
+		if flow != "" && c.GetFlow() != flow {
+			continue
+		}
+		out = append(out, proto.Clone(c).(*sipmeshapiv1.CallSummary))
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return &sipmeshapiv1.ListCallsResponse{Calls: out}, nil
+}
+
+func (s *server) GetCall(ctx context.Context, req *sipmeshapiv1.GetCallRequest) (*sipmeshapiv1.CallDetail, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c, ok := s.calls[req.GetInternalCallId()]
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "call %q not found", req.GetInternalCallId())
+	}
+	return &sipmeshapiv1.CallDetail{
+		Summary: proto.Clone(c).(*sipmeshapiv1.CallSummary),
+	}, nil
+}
+
+func (s *server) HangupCall(ctx context.Context, req *sipmeshapiv1.HangupCallRequest) (*sipmeshapiv1.HangupCallResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.calls[req.GetInternalCallId()]
+	if !ok {
+		return &sipmeshapiv1.HangupCallResponse{Found: false}, nil
+	}
+	prior := c.GetWorker()
+	delete(s.calls, req.GetInternalCallId())
+	// Compact callOrder.
+	out := s.callOrder[:0]
+	for _, id := range s.callOrder {
+		if id != req.GetInternalCallId() {
+			out = append(out, id)
+		}
+	}
+	s.callOrder = out
+	return &sipmeshapiv1.HangupCallResponse{
+		Found:       true,
+		PriorWorker: prior,
+	}, nil
+}
+
+func (s *server) ListWorkers(ctx context.Context, req *sipmeshapiv1.ListWorkersRequest) (*sipmeshapiv1.ListWorkersResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*sipmeshapiv1.WorkerSummaryV2, 0, len(s.workers))
+	for _, w := range s.workers {
+		out = append(out, proto.Clone(w).(*sipmeshapiv1.WorkerSummaryV2))
+	}
+	return &sipmeshapiv1.ListWorkersResponse{Workers: out}, nil
+}
+
+func (s *server) GetWorker(ctx context.Context, req *sipmeshapiv1.GetWorkerRequest) (*sipmeshapiv1.WorkerDetail, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, w := range s.workers {
+		if w.GetId() == req.GetId() {
+			return &sipmeshapiv1.WorkerDetail{
+				Summary: proto.Clone(w).(*sipmeshapiv1.WorkerSummaryV2),
+			}, nil
+		}
+	}
+	return nil, status.Errorf(codes.NotFound, "worker %q not found", req.GetId())
+}
+
+func (s *server) DrainWorker(ctx context.Context, req *sipmeshapiv1.DrainWorkerRequest) (*sipmeshapiv1.DrainWorkerResponse, error) {
+	if !req.GetConfirm() {
+		return nil, status.Errorf(codes.FailedPrecondition, "drain requires confirm=true")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.workers[:0]
+	dropped := false
+	for _, w := range s.workers {
+		if w.GetId() == req.GetId() {
+			dropped = true
+			continue
+		}
+		out = append(out, w)
+	}
+	s.workers = out
+	if !dropped {
+		return &sipmeshapiv1.DrainWorkerResponse{Ok: false}, nil
+	}
+	return &sipmeshapiv1.DrainWorkerResponse{Ok: true}, nil
+}
+
+func (s *server) ListAIWorkers(ctx context.Context, req *sipmeshapiv1.ListAIWorkersRequest) (*sipmeshapiv1.ListAIWorkersResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*sipmeshapiv1.AIWorkerCapability, 0, len(s.aiWorkers))
+	for _, p := range s.aiWorkers {
+		out = append(out, proto.Clone(p).(*sipmeshapiv1.AIWorkerCapability))
+	}
+	return &sipmeshapiv1.ListAIWorkersResponse{Workers: out}, nil
+}
+
 // -- Stubs (Unimplemented unless callers prove they need them) -------
 //
-// Calls / Workers / Archive / streaming RPCs return either empty
-// canned responses (where empty is a meaningful state) or fall through
-// to UnimplementedOperatorAPIServer's auto-generated Unimplemented
-// gRPC errors. Frontend tests that need richer fixtures will get
-// them via the seed HTTP endpoint (see main.go TODO).
+// Remaining RPCs (SubscribeEvents / StreamSipTrace / archive)
+// fall through to UnimplementedOperatorAPIServer's gRPC Unimplemented
+// errors. Add per-test seed plumbing when frontend lands a test
+// that needs them.
 
 // register binds the server's RPC handlers to the gRPC server.
 func (s *server) register(g *grpc.Server) {

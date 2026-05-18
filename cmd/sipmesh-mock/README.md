@@ -96,6 +96,42 @@ protojson-encoded body. Bumps version, returns:
 exercise downstream error paths. To validate the same payload first,
 POST to `/__seed/dry-run-validate`.
 
+### `POST /__seed/calls`
+
+Replaces the live-calls fixture. Body envelope:
+
+```json
+{
+  "calls": [
+    { "internal_call_id": "abc", "worker": "edge-a", "trunk": "t-1", "state": "answered", "flow": "voicebot" },
+    ...
+  ]
+}
+```
+
+Each entry is a `CallSummary` protojson object; the `calls` field
+itself is a JSON-array envelope so the body parses with stdlib
+`json.Unmarshal` before per-entry protojson decode. Returns
+`{"seeded": N}`. Entries with empty `internal_call_id` are dropped.
+
+After seeding, gRPC `ListCalls` / `GetCall` / `HangupCall` see the
+seeded state. `HangupCall` mutates the fixture in place
+(subsequent `ListCalls` no longer returns the hung-up call), so
+frontend's end-to-end hangup flow can be tested against the mock.
+
+### `POST /__seed/workers`
+
+Same envelope shape, with `WorkerSummaryV2` entries. Drives
+`ListWorkers` / `GetWorker` / `DrainWorker`. `DrainWorker` removes
+the worker from the fixture (requires `confirm=true`).
+
+### `POST /__seed/ai-workers`
+
+Same envelope shape, with `AIWorkerCapability` entries. Drives
+`ListAIWorkers`. Use this to populate the voice / model dropdowns
+the pipeline-edit form depends on without bringing up a real
+ai-worker pool.
+
 ### `POST /__seed/dry-run-validate`
 
 Runs `validate.OperatorConfig` against a protojson body without
@@ -113,9 +149,9 @@ storing. Returns:
 
 | Surface | Status | Why |
 |---|---|---|
-| `ListCalls` / `GetCall` / `HangupCall` | returns `Unimplemented` | No call runtime; seed endpoint will grow per-call canned fixtures in a follow-up |
-| `ListWorkers` / `GetWorker` / `DrainWorker` | returns `Unimplemented` | Same — no edge cluster |
-| `ListAIWorkers` | returns `Unimplemented` | No ai-worker pool registry |
+| `ListCalls` / `GetCall` / `HangupCall` | seeded via `POST /__seed/calls` | Real call runtime not simulated; seed fixtures drive read RPCs and `HangupCall` mutates the fixture |
+| `ListWorkers` / `GetWorker` / `DrainWorker` | seeded via `POST /__seed/workers` | Same shape — fixture-driven; `DrainWorker` removes from fixture |
+| `ListAIWorkers` | seeded via `POST /__seed/ai-workers` | Fixture-driven for voice/model dropdowns |
 | `SubscribeEvents` / `StreamSipTrace` | returns `Unimplemented` | Streaming events are per-test fixtures; expand seed endpoint when needed |
 | `ListCallArchive` / `GetCallArtifactURL` | returns `Unimplemented` | No S3 |
 

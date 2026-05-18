@@ -48,10 +48,12 @@ import (
 	"github.com/rromenskyi/sipmesh-common/validate"
 )
 
-// defaultGroup — single-tenant deploys use "" as the group key on
-// WriteConfig/ImportConfig. The per-resource read RPCs
-// (GetOperatorConfig / ListPipelines / ...) have no group field on
-// the proto today; they implicitly target the default group.
+// defaultGroup — the canonical single-tenant bucket every WriteConfig /
+// ImportConfig / Get / List call resolves to in the mock today.
+// Empty string for compactness; the value is opaque, what matters is
+// that every code path goes through normalizeGroup() so reads and
+// writes land in the same map slot regardless of what `group` field
+// the caller supplied on their request.
 const defaultGroup = ""
 
 // configSet captures one ConfigSet revision in memory. version is
@@ -131,6 +133,26 @@ func newServer(log *slog.Logger) *server {
 		artifacts: make(map[string]archiveArtifact),
 		log:       log,
 	}
+}
+
+// normalizeGroup collapses every caller-supplied group name to the
+// canonical single-tenant bucket. The mock today does not implement
+// per-tenant isolation; treating "" and "default" (and any other
+// arbitrary name) as equivalent matches the single-tenant engine
+// deployment shape AND fixes a real read/write divergence the
+// frontend hit: WriteConfigRequest carries `group`, but
+// GetOperatorConfigRequest is an empty proto with no group field,
+// so a frontend that writes with group="default" and then reads
+// with the implicit "" would see two separate buckets — OCC drift
+// guaranteed on the second write.
+//
+// When per-tenant isolation lands (mock asks #4 in the frontend
+// handoff queue), this helper splits into a real lookup that
+// honours the request's group field on the WriteConfig side AND
+// surfaces a new group field on GetOperatorConfigRequest. Until
+// then, single sink.
+func (s *server) normalizeGroup(_ string) string {
+	return defaultGroup
 }
 
 // setSeedHostHint records the host:port the HTTP seed server bound
@@ -262,6 +284,7 @@ func (s *server) seedAIWorkers(pools []*sipmeshapiv1.AIWorkerCapability) int {
 func (s *server) seed(group string, cfg *sipmeshapiv1.OperatorConfig) (uint64, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	group = s.normalizeGroup(group)
 	cs, ok := s.groups[group]
 	if !ok {
 		cs = &configSet{}
@@ -295,7 +318,7 @@ func computeETag(cfg *sipmeshapiv1.OperatorConfig) string {
 func (s *server) GetOperatorConfig(ctx context.Context, req *sipmeshapiv1.GetOperatorConfigRequest) (*sipmeshapiv1.OperatorConfigResponse, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	cs, ok := s.groups[defaultGroup]
+	cs, ok := s.groups[s.normalizeGroup("")]
 	if !ok {
 		return &sipmeshapiv1.OperatorConfigResponse{
 			Config: &sipmeshapiv1.OperatorConfig{
@@ -339,7 +362,7 @@ func (s *server) WriteConfig(ctx context.Context, req *sipmeshapiv1.WriteConfigR
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	group := req.GetGroup()
+	group := s.normalizeGroup(req.GetGroup())
 	cur, ok := s.groups[group]
 	curVersion := uint64(0)
 	if ok {
@@ -640,7 +663,7 @@ func (s *server) ImportConfig(ctx context.Context, req *sipmeshapiv1.ImportConfi
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	group := req.GetGroup()
+	group := s.normalizeGroup(req.GetGroup())
 	cur, ok := s.groups[group]
 	curVersion := uint64(0)
 	if ok {
@@ -754,7 +777,7 @@ func (s *server) ListRoutes(ctx context.Context, req *sipmeshapiv1.ListRoutesReq
 func (s *server) snapshot(group string) *sipmeshapiv1.OperatorConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	cs, ok := s.groups[group]
+	cs, ok := s.groups[s.normalizeGroup(group)]
 	if !ok || cs.config == nil {
 		return &sipmeshapiv1.OperatorConfig{}
 	}

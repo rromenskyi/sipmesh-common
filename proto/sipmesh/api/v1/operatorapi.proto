@@ -1400,6 +1400,28 @@ message RecordStep {
   // already wired) get the same payload over gRPC without the
   // extra disk write.
   bool emit_sidecar_json = 9;
+
+  // pre_record_tone is a short audible tone the engine plays
+  // immediately BEFORE the recording buffer opens — the classic
+  // voicemail beep that cues the caller "you can speak now".
+  // When the SayStep ahead says "leave a message after the tone",
+  // this is the tone. Without it the caller starts talking
+  // immediately and the recording captures whatever's already in
+  // flight (or worse, the caller waits expecting a beep that
+  // never comes).
+  //
+  // Synthesised locally by the edge (same path as
+  // ConverseStep.ack_tone) — no ai-worker round-trip, pre-encoded
+  // for the call's codec at step boundary. All-zero spec
+  // (duration_ms=0 OR volume=0.0) = no tone (the existing
+  // "start recording silently" behaviour, preserved for
+  // back-compat).
+  //
+  // Operator convention: 1000 Hz × 250 ms × 0.4 volume mirrors
+  // the legacy POTS voicemail beep most callers recognise. The
+  // SineToneSpec lets operators tune freq / duration / volume
+  // per deployment if they want something distinct.
+  SineToneSpec pre_record_tone = 10;
 }
 
 // GotoStep — unconditional jump to a LabelStep with matching name

@@ -979,6 +979,34 @@ message ConverseStep {
   map<string, StringList> reprompt_text_pool_by_language        = 23;
   map<string, StringList> on_max_turns_text_pool_by_language    = 24;
   map<string, StringList> unsupported_lang_text_pool_by_language = 25;
+
+  // pre_done_speak_text_by_language — engine-side enforcement
+  // against the LLM leaking caller details on the DONE-marker turn.
+  // When non-empty for a language AND the LLM reply on this turn
+  // contains the `<DONE attrs.../>` marker, the engine IGNORES the
+  // LLM reply text entirely and speaks this operator-authored
+  // phrase instead (a neutral transition, e.g. "One moment,
+  // connecting you now.").
+  //
+  // Why this exists: Gemini / GPT, when the system prompt instructs
+  // them to extract structured attributes + emit a DONE marker,
+  // routinely repeat the extracted attributes back to the caller
+  // before emitting it ("Got it, Roman — sales inquiry, connecting
+  // you to general support.") — confidential-by-design data leaks
+  // through the speaker. The system prompt can ask the model to be
+  // terse, but model behaviour drift makes the prompt unreliable.
+  // This field is the deterministic engine guard.
+  //
+  // Empty (default) for a language = legacy behaviour: engine
+  // speaks the LLM reply with the DONE marker stripped, whatever
+  // the model said.
+  //
+  // Pick semantics: SINGLE STRING per language (no pool variant);
+  // the whole point is a stable, predictable transition phrase, so
+  // randomisation would defeat it. `{{bot_name}}` placeholder
+  // substitution applies — same as the other *_text_by_language
+  // fields.
+  map<string, string> pre_done_speak_text_by_language = 26;
 }
 
 // SineToneSpec — a single fixed-frequency sine tone. Synthesised

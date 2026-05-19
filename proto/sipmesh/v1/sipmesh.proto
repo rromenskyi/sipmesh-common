@@ -1314,6 +1314,22 @@ message CallTranscript {
   // commit for bot). Operators align to the recording timeline by
   // subtracting CallEvents started_at. Empty on legacy events.
   string at_iso            = 6;
+  // ResponseDelayMs is the perceived voicebot turn latency for
+  // bot-role turns: wall-clock from the caller's VAD endpoint
+  // (engine detected they finished speaking) to the moment the
+  // first bot audio frame was queued for egress on the caller leg.
+  // This is the "did the line feel snappy?" KPI — under ~700 ms
+  // reads as human, above ~1.5 s reads as laggy.
+  //
+  // Set only on `role="bot"` turns that followed a caller utterance
+  // — i.e. ConverseStep replies. Greeting SayStep / max-turns
+  // farewell / fallback-after-no-listen-yet are NOT preceded by a
+  // capture endpoint and emit this field empty (0 → omitted by
+  // wire serialiser; CDR consumer treats absent as "no sample").
+  //
+  // Set to 0 on caller/operator-role turns (semantically inapplicable
+  // — there's no "they replied" point for a STT'd inbound utterance).
+  uint32 response_delay_ms = 7;
 }
 
 // ChatMessage is one entry in the conversation history fed to the LLM.

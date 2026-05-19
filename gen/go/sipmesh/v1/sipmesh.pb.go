@@ -5775,9 +5775,25 @@ type CallTranscript struct {
 	// pipeline (STT result for caller/operator, TTS-source text
 	// commit for bot). Operators align to the recording timeline by
 	// subtracting CallEvents started_at. Empty on legacy events.
-	AtIso         string `protobuf:"bytes,6,opt,name=at_iso,json=atIso,proto3" json:"at_iso,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AtIso string `protobuf:"bytes,6,opt,name=at_iso,json=atIso,proto3" json:"at_iso,omitempty"`
+	// ResponseDelayMs is the perceived voicebot turn latency for
+	// bot-role turns: wall-clock from the caller's VAD endpoint
+	// (engine detected they finished speaking) to the moment the
+	// first bot audio frame was queued for egress on the caller leg.
+	// This is the "did the line feel snappy?" KPI — under ~700 ms
+	// reads as human, above ~1.5 s reads as laggy.
+	//
+	// Set only on `role="bot"` turns that followed a caller utterance
+	// — i.e. ConverseStep replies. Greeting SayStep / max-turns
+	// farewell / fallback-after-no-listen-yet are NOT preceded by a
+	// capture endpoint and emit this field empty (0 → omitted by
+	// wire serialiser; CDR consumer treats absent as "no sample").
+	//
+	// Set to 0 on caller/operator-role turns (semantically inapplicable
+	// — there's no "they replied" point for a STT'd inbound utterance).
+	ResponseDelayMs uint32 `protobuf:"varint,7,opt,name=response_delay_ms,json=responseDelayMs,proto3" json:"response_delay_ms,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CallTranscript) Reset() {
@@ -5850,6 +5866,13 @@ func (x *CallTranscript) GetAtIso() string {
 		return x.AtIso
 	}
 	return ""
+}
+
+func (x *CallTranscript) GetResponseDelayMs() uint32 {
+	if x != nil {
+		return x.ResponseDelayMs
+	}
+	return 0
 }
 
 // ChatMessage is one entry in the conversation history fed to the LLM.
@@ -7444,7 +7467,7 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x05digit\x18\x01 \x01(\tR\x05digit\x12\x1f\n" +
 	"\vduration_ms\x18\x02 \x01(\rR\n" +
 	"durationMs\x12\x16\n" +
-	"\x06volume\x18\x03 \x01(\rR\x06volume\"\xb2\x01\n" +
+	"\x06volume\x18\x03 \x01(\rR\x06volume\"\xde\x01\n" +
 	"\x0eCallTranscript\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1a\n" +
 	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x1e\n" +
@@ -7453,7 +7476,8 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"confidence\x12%\n" +
 	"\x0erecording_path\x18\x04 \x01(\tR\rrecordingPath\x12\x12\n" +
 	"\x04role\x18\x05 \x01(\tR\x04role\x12\x15\n" +
-	"\x06at_iso\x18\x06 \x01(\tR\x05atIso\"\x96\x01\n" +
+	"\x06at_iso\x18\x06 \x01(\tR\x05atIso\x12*\n" +
+	"\x11response_delay_ms\x18\a \x01(\rR\x0fresponseDelayMs\"\x96\x01\n" +
 	"\vChatMessage\x120\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x1c.sipmesh.v1.ChatMessage.RoleR\x04role\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\"A\n" +

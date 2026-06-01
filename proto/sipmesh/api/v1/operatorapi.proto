@@ -61,6 +61,15 @@ message OperatorConfig {
   // Call flows / pipelines (say + listen + converse + dial + bridge
   // + hangup composition). Referenced from Route.pipeline by name.
   repeated Pipeline pipelines = 3;
+  // Recording destinations keyed by our DID. The engine looks up the
+  // sink by the E.164 number on the call (inbound = callee/our-DID,
+  // outbound = caller-id/our-DID — the same number the call matched a
+  // pipeline on, verbatim) and writes the WAV to GCS with the sink's
+  // CMEK key name. No matching sink => fail-closed: NO recording is
+  // written (never plaintext PII). Per-workspace in practice (every
+  // number in a workspace shares one sink), but the engine is
+  // workspace-blind and resolves purely by number.
+  repeated RecordingSink recording_sinks = 4;
   // ConfigSet bookkeeping — populated by the server on read,
   // ignored on write (server stamps a fresh version every Apply).
   // Frontend echoes back what it last read into ApplyRequest's
@@ -71,6 +80,30 @@ message OperatorConfig {
   // proto well-known Timestamp would need an import we're
   // postponing while the rest of the proto stays self-contained).
   string applied_at_iso = 102;
+}
+
+// RecordingSink binds one of our DID numbers to where its call
+// recordings are stored and the Cloud KMS key GCS uses to encrypt them
+// at rest (CMEK). Both gcs_prefix and kms_key_name are OPAQUE to the
+// engine: it copies kms_key_name onto the GCS object insert
+// (kmsKeyName), and GCS's own service agent performs the encryption.
+// The engine never holds key material, never calls KMS, never does
+// crypto — it only needs storage.objects.create on the bucket.
+message RecordingSink {
+  // Our DID in E.164, e.g. "+13855550123". The lookup key — matched
+  // verbatim against the number on the call (inbound: callee; outbound:
+  // caller-id).
+  string dialed_e164 = 1;
+  // Cloud Storage URI prefix, e.g. "gs://loa-recordings-dev/ws/<opaque>/".
+  // The engine writes "<gcs_prefix>/<internal_call_id>.wav" beneath it
+  // and reports the resulting gs:// URI on CallRecordingDone.uri.
+  string gcs_prefix = 2;
+  // Full Cloud KMS key resource name —
+  // projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k> — set as
+  // kmsKeyName on the object insert. Per-workspace recording key
+  // (NOT the envelope KEK), so the GCS service agent can't decrypt
+  // wrapped DEKs.
+  string kms_key_name = 3;
 }
 
 message GetOperatorConfigRequest {}

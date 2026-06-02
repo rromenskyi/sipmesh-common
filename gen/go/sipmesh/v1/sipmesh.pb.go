@@ -1524,8 +1524,17 @@ type StartCallRequest struct {
 	// them to sign outbound binding requests.
 	RemoteIceUfrag string `protobuf:"bytes,11,opt,name=remote_ice_ufrag,json=remoteIceUfrag,proto3" json:"remote_ice_ufrag,omitempty"`
 	RemoteIcePwd   string `protobuf:"bytes,12,opt,name=remote_ice_pwd,json=remoteIcePwd,proto3" json:"remote_ice_pwd,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// called_uri is the dialed party (our DID) for this call —
+	// "sip:+13855180204@host". The scheduler populates it from the
+	// matched call's callee so the edge can resolve the per-DID GCS-CMEK
+	// recording sink (keyed by the dialed E.164) at archive time.
+	// Previously absent, so edge recording fell back to dialed="" and the
+	// GCS upload always no-op'd (fail-closed) on inbound calls. Empty when
+	// the scheduler has no callee — edge then keeps the recording local,
+	// same as the prior behaviour.
+	CalledUri     string `protobuf:"bytes,13,opt,name=called_uri,json=calledUri,proto3" json:"called_uri,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StartCallRequest) Reset() {
@@ -1631,6 +1640,13 @@ func (x *StartCallRequest) GetRemoteIceUfrag() string {
 func (x *StartCallRequest) GetRemoteIcePwd() string {
 	if x != nil {
 		return x.RemoteIcePwd
+	}
+	return ""
+}
+
+func (x *StartCallRequest) GetCalledUri() string {
+	if x != nil {
+		return x.CalledUri
 	}
 	return ""
 }
@@ -7153,7 +7169,7 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\x12\x14\n" +
 	"\x05codec\x18\x02 \x01(\tR\x05codec\x12!\n" +
 	"\fpayload_type\x18\x03 \x01(\rR\vpayloadType\"\x19\n" +
-	"\x17SwitchCallCodecResponse\"\xaa\x03\n" +
+	"\x17SwitchCallCodecResponse\"\xc9\x03\n" +
 	"\x10StartCallRequest\x12(\n" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\x12(\n" +
 	"\x04flow\x18\x02 \x01(\x0e2\x14.sipmesh.v1.CallFlowR\x04flow\x12!\n" +
@@ -7168,7 +7184,9 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\fwants_webrtc\x18\n" +
 	" \x01(\bR\vwantsWebrtc\x12(\n" +
 	"\x10remote_ice_ufrag\x18\v \x01(\tR\x0eremoteIceUfrag\x12$\n" +
-	"\x0eremote_ice_pwd\x18\f \x01(\tR\fremoteIcePwdJ\x04\b\x05\x10\x06R\brtp_port\"\xb6\x01\n" +
+	"\x0eremote_ice_pwd\x18\f \x01(\tR\fremoteIcePwd\x12\x1d\n" +
+	"\n" +
+	"called_uri\x18\r \x01(\tR\tcalledUriJ\x04\b\x05\x10\x06R\brtp_port\"\xb6\x01\n" +
 	"\x11StartCallResponse\x12\x19\n" +
 	"\brtp_port\x18\x01 \x01(\rR\artpPort\x12\x1b\n" +
 	"\tice_ufrag\x18\x02 \x01(\tR\biceUfrag\x12\x17\n" +

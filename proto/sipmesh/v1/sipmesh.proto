@@ -394,6 +394,15 @@ message StartCallRequest {
   // them to sign outbound binding requests.
   string remote_ice_ufrag = 11;
   string remote_ice_pwd   = 12;
+  // called_uri is the dialed party (our DID) for this call —
+  // "sip:+13855180204@host". The scheduler populates it from the
+  // matched call's callee so the edge can resolve the per-DID GCS-CMEK
+  // recording sink (keyed by the dialed E.164) at archive time.
+  // Previously absent, so edge recording fell back to dialed="" and the
+  // GCS upload always no-op'd (fail-closed) on inbound calls. Empty when
+  // the scheduler has no callee — edge then keeps the recording local,
+  // same as the prior behaviour.
+  string called_uri = 13;
 }
 message StartCallResponse {
   // Port the edge bound for this call, picked from its local pool.

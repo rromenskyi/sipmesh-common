@@ -3718,8 +3718,18 @@ type CallSummary struct {
 	RtpPort         uint32                 `protobuf:"varint,7,opt,name=rtp_port,json=rtpPort,proto3" json:"rtp_port,omitempty"`
 	CreatedUnixNs   int64                  `protobuf:"varint,8,opt,name=created_unix_ns,json=createdUnixNs,proto3" json:"created_unix_ns,omitempty"`
 	LastTouchUnixNs int64                  `protobuf:"varint,9,opt,name=last_touch_unix_ns,json=lastTouchUnixNs,proto3" json:"last_touch_unix_ns,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// trunk_id is which trunk the call rode in/out on (the dialog row's
+	// TrunkID, stamped by AllocateCall). For outbound it's the trunk we
+	// originated through; for inbound the matched trunk. Lets a consumer
+	// attribute the call to a workspace by a namespaced <ws>__<wire>
+	// trunk id without inferring from caller/callee DIDs. Empty on legacy
+	// single-trunk deploys / calls allocated before trunk wiring.
+	TrunkId string `protobuf:"bytes,10,opt,name=trunk_id,json=trunkId,proto3" json:"trunk_id,omitempty"`
+	// direction is "inbound" / "outbound" (the dialog row's Direction).
+	// Empty when unset on the dialog row.
+	Direction     string `protobuf:"bytes,11,opt,name=direction,proto3" json:"direction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CallSummary) Reset() {
@@ -3813,6 +3823,20 @@ func (x *CallSummary) GetLastTouchUnixNs() int64 {
 		return x.LastTouchUnixNs
 	}
 	return 0
+}
+
+func (x *CallSummary) GetTrunkId() string {
+	if x != nil {
+		return x.TrunkId
+	}
+	return ""
+}
+
+func (x *CallSummary) GetDirection() string {
+	if x != nil {
+		return x.Direction
+	}
+	return ""
 }
 
 type DescribeCallRequest struct {
@@ -7326,7 +7350,7 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\rR\x05limit\"B\n" +
 	"\x11ListCallsResponse\x12-\n" +
-	"\x05calls\x18\x01 \x03(\v2\x17.sipmesh.v1.CallSummaryR\x05calls\"\xc4\x02\n" +
+	"\x05calls\x18\x01 \x03(\v2\x17.sipmesh.v1.CallSummaryR\x05calls\"\xfd\x02\n" +
 	"\vCallSummary\x12(\n" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\x12*\n" +
 	"\x11signaling_call_id\x18\x02 \x01(\tR\x0fsignalingCallId\x12\x1b\n" +
@@ -7338,7 +7362,10 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x05codec\x18\x06 \x01(\tR\x05codec\x12\x19\n" +
 	"\brtp_port\x18\a \x01(\rR\artpPort\x12&\n" +
 	"\x0fcreated_unix_ns\x18\b \x01(\x03R\rcreatedUnixNs\x12+\n" +
-	"\x12last_touch_unix_ns\x18\t \x01(\x03R\x0flastTouchUnixNs\"?\n" +
+	"\x12last_touch_unix_ns\x18\t \x01(\x03R\x0flastTouchUnixNs\x12\x19\n" +
+	"\btrunk_id\x18\n" +
+	" \x01(\tR\atrunkId\x12\x1c\n" +
+	"\tdirection\x18\v \x01(\tR\tdirection\"?\n" +
 	"\x13DescribeCallRequest\x12(\n" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\"l\n" +
 	"\n" +

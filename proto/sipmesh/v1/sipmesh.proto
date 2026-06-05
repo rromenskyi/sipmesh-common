@@ -798,6 +798,16 @@ message CallSummary {
   uint32 rtp_port           = 7;
   int64  created_unix_ns    = 8;
   int64  last_touch_unix_ns = 9;
+  // trunk_id is which trunk the call rode in/out on (the dialog row's
+  // TrunkID, stamped by AllocateCall). For outbound it's the trunk we
+  // originated through; for inbound the matched trunk. Lets a consumer
+  // attribute the call to a workspace by a namespaced <ws>__<wire>
+  // trunk id without inferring from caller/callee DIDs. Empty on legacy
+  // single-trunk deploys / calls allocated before trunk wiring.
+  string trunk_id           = 10;
+  // direction is "inbound" / "outbound" (the dialog row's Direction).
+  // Empty when unset on the dialog row.
+  string direction          = 11;
 }
 
 message DescribeCallRequest  { string internal_call_id = 1; }

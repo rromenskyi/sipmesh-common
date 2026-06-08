@@ -230,6 +230,14 @@ message PublishCallSignalRequest {
     KIND_ANSWERED    = 2;  // 200 OK sent (inbound) / received (outbound)
   }
   Kind kind = 3;
+  // Answer-time call timings — set by sip-proxy ONLY on KIND_ANSWERED
+  // for outbound legs; the scheduler maps them onto the CallAnswered
+  // event. pdd_ms: INVITE→first 18x ringback; answer_latency_ms:
+  // INVITE→2xx; early_media: a 183 with SDP preceded the 2xx. Zero on
+  // inbound / when not measured.
+  uint32 pdd_ms            = 4;
+  uint32 answer_latency_ms = 5;
+  bool   early_media       = 6;
 }
 message PublishCallSignalResponse {}
 message ReleaseCallResponse {}
@@ -615,7 +623,16 @@ message DialogHangup {
 }
 
 message CallStarted       {}
-message CallAnswered      {}
+message CallAnswered {
+  // Outbound call-timing signals stamped by sip-proxy at the moment of
+  // answer (it is the only plane that sees the INVITE / 18x / 183 / 2xx
+  // timeline). The backend reads these for per-country call stats; the
+  // CDR assembler folds them onto the CDR. All zero/false on inbound
+  // legs. pdd_ms is omitted (0) when no ringback (18x) preceded the 2xx.
+  uint32 pdd_ms            = 1; // INVITE → first 18x ringback (post-dial delay)
+  uint32 answer_latency_ms = 2; // INVITE → 2xx (time-to-answer)
+  bool   early_media       = 3; // a 183 with SDP preceded the 2xx
+}
 message CallRecordingDone {
   string uri          = 1;
   uint64 bytes        = 2;

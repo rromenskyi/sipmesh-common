@@ -888,8 +888,16 @@ type PublishCallSignalRequest struct {
 	InternalCallId string                        `protobuf:"bytes,1,opt,name=internal_call_id,json=internalCallId,proto3" json:"internal_call_id,omitempty"`
 	Ts             *timestamppb.Timestamp        `protobuf:"bytes,2,opt,name=ts,proto3" json:"ts,omitempty"`
 	Kind           PublishCallSignalRequest_Kind `protobuf:"varint,3,opt,name=kind,proto3,enum=sipmesh.v1.PublishCallSignalRequest_Kind" json:"kind,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Answer-time call timings — set by sip-proxy ONLY on KIND_ANSWERED
+	// for outbound legs; the scheduler maps them onto the CallAnswered
+	// event. pdd_ms: INVITE→first 18x ringback; answer_latency_ms:
+	// INVITE→2xx; early_media: a 183 with SDP preceded the 2xx. Zero on
+	// inbound / when not measured.
+	PddMs           uint32 `protobuf:"varint,4,opt,name=pdd_ms,json=pddMs,proto3" json:"pdd_ms,omitempty"`
+	AnswerLatencyMs uint32 `protobuf:"varint,5,opt,name=answer_latency_ms,json=answerLatencyMs,proto3" json:"answer_latency_ms,omitempty"`
+	EarlyMedia      bool   `protobuf:"varint,6,opt,name=early_media,json=earlyMedia,proto3" json:"early_media,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PublishCallSignalRequest) Reset() {
@@ -941,6 +949,27 @@ func (x *PublishCallSignalRequest) GetKind() PublishCallSignalRequest_Kind {
 		return x.Kind
 	}
 	return PublishCallSignalRequest_KIND_UNSPECIFIED
+}
+
+func (x *PublishCallSignalRequest) GetPddMs() uint32 {
+	if x != nil {
+		return x.PddMs
+	}
+	return 0
+}
+
+func (x *PublishCallSignalRequest) GetAnswerLatencyMs() uint32 {
+	if x != nil {
+		return x.AnswerLatencyMs
+	}
+	return 0
+}
+
+func (x *PublishCallSignalRequest) GetEarlyMedia() bool {
+	if x != nil {
+		return x.EarlyMedia
+	}
+	return false
 }
 
 type PublishCallSignalResponse struct {
@@ -3043,9 +3072,17 @@ func (*CallStarted) Descriptor() ([]byte, []int) {
 }
 
 type CallAnswered struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Outbound call-timing signals stamped by sip-proxy at the moment of
+	// answer (it is the only plane that sees the INVITE / 18x / 183 / 2xx
+	// timeline). The backend reads these for per-country call stats; the
+	// CDR assembler folds them onto the CDR. All zero/false on inbound
+	// legs. pdd_ms is omitted (0) when no ringback (18x) preceded the 2xx.
+	PddMs           uint32 `protobuf:"varint,1,opt,name=pdd_ms,json=pddMs,proto3" json:"pdd_ms,omitempty"`                                 // INVITE → first 18x ringback (post-dial delay)
+	AnswerLatencyMs uint32 `protobuf:"varint,2,opt,name=answer_latency_ms,json=answerLatencyMs,proto3" json:"answer_latency_ms,omitempty"` // INVITE → 2xx (time-to-answer)
+	EarlyMedia      bool   `protobuf:"varint,3,opt,name=early_media,json=earlyMedia,proto3" json:"early_media,omitempty"`                  // a 183 with SDP preceded the 2xx
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CallAnswered) Reset() {
@@ -3076,6 +3113,27 @@ func (x *CallAnswered) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CallAnswered.ProtoReflect.Descriptor instead.
 func (*CallAnswered) Descriptor() ([]byte, []int) {
 	return file_sipmesh_v1_sipmesh_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *CallAnswered) GetPddMs() uint32 {
+	if x != nil {
+		return x.PddMs
+	}
+	return 0
+}
+
+func (x *CallAnswered) GetAnswerLatencyMs() uint32 {
+	if x != nil {
+		return x.AnswerLatencyMs
+	}
+	return 0
+}
+
+func (x *CallAnswered) GetEarlyMedia() bool {
+	if x != nil {
+		return x.EarlyMedia
+	}
+	return false
 }
 
 type CallRecordingDone struct {
@@ -7159,11 +7217,15 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x18reject_silent_timeout_ms\x18\r \x01(\rR\x15rejectSilentTimeoutMs\"V\n" +
 	"\x12ReleaseCallRequest\x12(\n" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xf1\x01\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xd5\x02\n" +
 	"\x18PublishCallSignalRequest\x12(\n" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\x12*\n" +
 	"\x02ts\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02ts\x12=\n" +
-	"\x04kind\x18\x03 \x01(\x0e2).sipmesh.v1.PublishCallSignalRequest.KindR\x04kind\"@\n" +
+	"\x04kind\x18\x03 \x01(\x0e2).sipmesh.v1.PublishCallSignalRequest.KindR\x04kind\x12\x15\n" +
+	"\x06pdd_ms\x18\x04 \x01(\rR\x05pddMs\x12*\n" +
+	"\x11answer_latency_ms\x18\x05 \x01(\rR\x0fanswerLatencyMs\x12\x1f\n" +
+	"\vearly_media\x18\x06 \x01(\bR\n" +
+	"earlyMedia\"@\n" +
 	"\x04Kind\x12\x14\n" +
 	"\x10KIND_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vKIND_INVITE\x10\x01\x12\x11\n" +
@@ -7298,8 +7360,12 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x04kind\"&\n" +
 	"\fDialogHangup\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\"\r\n" +
-	"\vCallStarted\"\x0e\n" +
-	"\fCallAnswered\"\x97\x03\n" +
+	"\vCallStarted\"r\n" +
+	"\fCallAnswered\x12\x15\n" +
+	"\x06pdd_ms\x18\x01 \x01(\rR\x05pddMs\x12*\n" +
+	"\x11answer_latency_ms\x18\x02 \x01(\rR\x0fanswerLatencyMs\x12\x1f\n" +
+	"\vearly_media\x18\x03 \x01(\bR\n" +
+	"earlyMedia\"\x97\x03\n" +
 	"\x11CallRecordingDone\x12\x10\n" +
 	"\x03uri\x18\x01 \x01(\tR\x03uri\x12\x14\n" +
 	"\x05bytes\x18\x02 \x01(\x04R\x05bytes\x12\x1f\n" +

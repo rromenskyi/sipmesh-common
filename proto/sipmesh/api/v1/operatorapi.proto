@@ -1144,8 +1144,30 @@ message BranchStep {
 message BranchCase {
   // Single-key when expression. "last_dial_status: 200" etc.
   // Frontend renders as a dropdown over known fields + value editor.
+  // A bare string value desugars to exact-equals. For set / negation /
+  // regex matching use when_match instead.
   map<string, string> when      = 1;
   repeated PipelineStep   steps = 2;
+  // Richer predicate matchers, keyed by the SAME predicate keys as
+  // `when` (caller_number, last_dial_status, custom.<key>, …). Use this
+  // when a key needs set membership / negation / regex rather than the
+  // exact-equals that a `when` string carries. A key may appear in
+  // `when` OR `when_match` (not both for the same key — `when_match`
+  // wins if it does). Empty = no extra matchers; existing `when`
+  // pipelines are unaffected.
+  map<string, Match>  when_match = 3;
+}
+
+// Match is a richer predicate value than a bare `when` string. Mirrors
+// the engine's match.String / match.Uint32: numeric predicate keys
+// (e.g. last_dial_status) compare the stringified value and ignore
+// regex; string keys honour all fields. An all-empty Match is "no
+// constraint" (matches anything) — same semantics as an absent key.
+message Match {
+  string          equals = 1;  // exact match (case-sensitive)
+  repeated string in     = 2;  // matches if the value is in this set
+  repeated string not_in = 3;  // matches if the value is NOT in this set
+  string          regex  = 4;  // RE2 regex (string keys only; ignored for numeric)
 }
 
 message DTMFStep {

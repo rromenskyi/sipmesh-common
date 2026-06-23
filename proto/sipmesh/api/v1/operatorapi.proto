@@ -445,6 +445,27 @@ message Trunk {
   // own default. Maps to internal/trunkmgr Trunk.OutboundCallerID.
   CallerID outbound_caller_id = 56;
 
+  // How the presented caller-ID (outbound_caller_id, or a per-route /
+  // per-extension override) is placed on the wire for outbound
+  // originates through this trunk. Carriers differ:
+  //   - PAI (default): From = the registered account user; the CLI
+  //     rides in P-Asserted-Identity (RFC 3325). Register-auth carriers
+  //     like Zadarma REQUIRE this — a From other than the account user
+  //     gets rejected / routed to their IVR.
+  //   - FROM: the CLI goes in the From header user-part. Some carriers
+  //     (e.g. Infinity/inftele) reject the call unless the real
+  //     A-number is in From, and do no PAI→CLI substitution.
+  // Account identity reaches the carrier via Contact + digest auth
+  // regardless of this setting, so FROM does not lose trunk identity.
+  // UNSPECIFIED == PAI (back-compat: existing trunks keep current
+  // behaviour). Maps to internal/trunkmgr Trunk.CallerIDMode.
+  enum CallerIDMode {
+    CALLER_ID_MODE_UNSPECIFIED = 0;
+    CALLER_ID_MODE_PAI         = 1;
+    CALLER_ID_MODE_FROM        = 2;
+  }
+  CallerIDMode caller_id_mode = 59;
+
   // Trunk-level dialed-number rewrite applied on outbound originate.
   // Per-route rewrite_dialed (on InboundOutboundRoute / ExtensionRoute
   // / ForwardRoute) is applied first; this stacks AFTER it. Maps to

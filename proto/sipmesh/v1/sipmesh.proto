@@ -1223,6 +1223,14 @@ message Capability {
   string tts_plugin                = 5;
   string stt_plugin                = 6;
   string llm_plugin                = 7;
+  // Languages the STT plugin can transcribe, as normalized BCP-47
+  // primary subtags ("en", "ru", "uk") — the same form a pipeline's
+  // stt_language takes. Lets the editor offer only languages the
+  // pool's STT actually supports. Empty = the plugin didn't enumerate
+  // (unknown / unrestricted); the frontend then imposes no constraint.
+  // Each STT backend self-reports via supported_languages(); whisper
+  // variants share one constant, google reports its own set.
+  repeated string stt_languages    = 8;
 }
 
 // Voice mirrors operatorapi.v1.VoiceInfo on the wire — kept as a

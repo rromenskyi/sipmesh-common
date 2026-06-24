@@ -1896,6 +1896,15 @@ message AIWorkerCapability {
   // replicas (RFC3339). Frontend grays out the dropdown entry
   // when stale > N minutes.
   string last_heartbeat_iso = 6;
+  // stt_languages is the set of languages this pool's STT plugin can
+  // transcribe, as normalized BCP-47 primary subtags ("en", "ru",
+  // "uk") — the same form Pipeline.stt_language takes. Unioned across
+  // replicas like llm_models. Empty = no replica enumerated its STT
+  // languages (unknown / unrestricted); the editor imposes no
+  // constraint. The frontend can intersect this with the languages of
+  // `voices` above to show only the end-to-end-buildable set (a bot
+  // needs both STT in and a TTS voice out).
+  repeated string stt_languages = 7;
 }
 
 message ListAIWorkersRequest {}

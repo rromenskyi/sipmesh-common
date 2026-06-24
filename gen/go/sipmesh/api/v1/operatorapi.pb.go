@@ -7769,8 +7769,17 @@ type AIWorkerCapability struct {
 	// replicas (RFC3339). Frontend grays out the dropdown entry
 	// when stale > N minutes.
 	LastHeartbeatIso string `protobuf:"bytes,6,opt,name=last_heartbeat_iso,json=lastHeartbeatIso,proto3" json:"last_heartbeat_iso,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// stt_languages is the set of languages this pool's STT plugin can
+	// transcribe, as normalized BCP-47 primary subtags ("en", "ru",
+	// "uk") — the same form Pipeline.stt_language takes. Unioned across
+	// replicas like llm_models. Empty = no replica enumerated its STT
+	// languages (unknown / unrestricted); the editor imposes no
+	// constraint. The frontend can intersect this with the languages of
+	// `voices` above to show only the end-to-end-buildable set (a bot
+	// needs both STT in and a TTS voice out).
+	SttLanguages  []string `protobuf:"bytes,7,rep,name=stt_languages,json=sttLanguages,proto3" json:"stt_languages,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AIWorkerCapability) Reset() {
@@ -7843,6 +7852,13 @@ func (x *AIWorkerCapability) GetLastHeartbeatIso() string {
 		return x.LastHeartbeatIso
 	}
 	return ""
+}
+
+func (x *AIWorkerCapability) GetSttLanguages() []string {
+	if x != nil {
+		return x.SttLanguages
+	}
+	return nil
 }
 
 type ListAIWorkersRequest struct {
@@ -9601,7 +9617,7 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x16\n" +
 	"\x06gender\x18\x03 \x01(\tR\x06gender\x12\x12\n" +
-	"\x04tier\x18\x04 \x01(\tR\x04tier\"\x81\x02\n" +
+	"\x04tier\x18\x04 \x01(\tR\x04tier\"\xa6\x02\n" +
 	"\x12AIWorkerCapability\x12\x1d\n" +
 	"\n" +
 	"pool_label\x18\x01 \x01(\tR\tpoolLabel\x121\n" +
@@ -9610,7 +9626,8 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"llm_models\x18\x03 \x03(\tR\tllmModels\x12%\n" +
 	"\x0emax_concurrent\x18\x04 \x01(\rR\rmaxConcurrent\x12%\n" +
 	"\x0eactive_workers\x18\x05 \x01(\rR\ractiveWorkers\x12,\n" +
-	"\x12last_heartbeat_iso\x18\x06 \x01(\tR\x10lastHeartbeatIso\"\x16\n" +
+	"\x12last_heartbeat_iso\x18\x06 \x01(\tR\x10lastHeartbeatIso\x12#\n" +
+	"\rstt_languages\x18\a \x03(\tR\fsttLanguages\"\x16\n" +
 	"\x14ListAIWorkersRequest\"U\n" +
 	"\x15ListAIWorkersResponse\x12<\n" +
 	"\aworkers\x18\x01 \x03(\v2\".sipmesh.api.v1.AIWorkerCapabilityR\aworkers\"0\n" +

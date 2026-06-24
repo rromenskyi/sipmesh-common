@@ -5330,9 +5330,17 @@ type Capability struct {
 	// Plugin names for diagnostics ("piper" / "google_cloud" / etc).
 	// Frontend uses these to disambiguate identically-named voices
 	// across pools if needed.
-	TtsPlugin     string `protobuf:"bytes,5,opt,name=tts_plugin,json=ttsPlugin,proto3" json:"tts_plugin,omitempty"`
-	SttPlugin     string `protobuf:"bytes,6,opt,name=stt_plugin,json=sttPlugin,proto3" json:"stt_plugin,omitempty"`
-	LlmPlugin     string `protobuf:"bytes,7,opt,name=llm_plugin,json=llmPlugin,proto3" json:"llm_plugin,omitempty"`
+	TtsPlugin string `protobuf:"bytes,5,opt,name=tts_plugin,json=ttsPlugin,proto3" json:"tts_plugin,omitempty"`
+	SttPlugin string `protobuf:"bytes,6,opt,name=stt_plugin,json=sttPlugin,proto3" json:"stt_plugin,omitempty"`
+	LlmPlugin string `protobuf:"bytes,7,opt,name=llm_plugin,json=llmPlugin,proto3" json:"llm_plugin,omitempty"`
+	// Languages the STT plugin can transcribe, as normalized BCP-47
+	// primary subtags ("en", "ru", "uk") — the same form a pipeline's
+	// stt_language takes. Lets the editor offer only languages the
+	// pool's STT actually supports. Empty = the plugin didn't enumerate
+	// (unknown / unrestricted); the frontend then imposes no constraint.
+	// Each STT backend self-reports via supported_languages(); whisper
+	// variants share one constant, google reports its own set.
+	SttLanguages  []string `protobuf:"bytes,8,rep,name=stt_languages,json=sttLanguages,proto3" json:"stt_languages,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5400,6 +5408,13 @@ func (x *Capability) GetLlmPlugin() string {
 		return x.LlmPlugin
 	}
 	return ""
+}
+
+func (x *Capability) GetSttLanguages() []string {
+	if x != nil {
+		return x.SttLanguages
+	}
+	return nil
 }
 
 // Voice mirrors operatorapi.v1.VoiceInfo on the wire — kept as a
@@ -7532,7 +7547,7 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x14GetCPSStatusResponse\x12'\n" +
 	"\x03cps\x18\x01 \x03(\v2\x15.sipmesh.v1.CPSBucketR\x03cps\x12?\n" +
 	"\vconcurrency\x18\x02 \x03(\v2\x1d.sipmesh.v1.ConcurrencyBucketR\vconcurrency\"\x16\n" +
-	"\x14GetCapabilityRequest\"\xdb\x01\n" +
+	"\x14GetCapabilityRequest\"\x80\x02\n" +
 	"\n" +
 	"Capability\x12)\n" +
 	"\x06voices\x18\x02 \x03(\v2\x11.sipmesh.v1.VoiceR\x06voices\x12\x1d\n" +
@@ -7543,7 +7558,8 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\n" +
 	"stt_plugin\x18\x06 \x01(\tR\tsttPlugin\x12\x1d\n" +
 	"\n" +
-	"llm_plugin\x18\a \x01(\tR\tllmPluginJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05R\n" +
+	"llm_plugin\x18\a \x01(\tR\tllmPlugin\x12#\n" +
+	"\rstt_languages\x18\b \x03(\tR\fsttLanguagesJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05R\n" +
 	"pool_labelR\x0emax_concurrent\"_\n" +
 	"\x05Voice\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +

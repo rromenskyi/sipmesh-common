@@ -436,6 +436,15 @@ message Trunk {
   // Source-IP allowlist for inbound matching when the carrier's
   // SBC sits on a different IP than the REGISTER target.
   repeated string allowed_ips = 54;
+  // E.164 numbers this trunk serves on the INBOUND leg. ONLY a
+  // disambiguator: when one source IP fronts several trunks (a carrier
+  // SBC pool fronting multiple DID accounts across workspaces), the
+  // dialed number (To/Request-URI user-part) picks which trunk the call
+  // belongs to. Single trunk per IP => irrelevant. Empty => first-wins
+  // fallback (pre-field behaviour), so populating it never breaks an
+  // already-working call. Backend fills these from dids.trunk_wire_id;
+  // sipmesh matches +-tolerantly (carrier may stamp bare national).
+  repeated string inbound_dids = 60;
   // IPv6 vs IPv4 outbound preference.
   repeated string outbound_family_preference = 55;
 

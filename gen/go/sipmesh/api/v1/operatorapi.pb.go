@@ -1913,6 +1913,15 @@ type Trunk struct {
 	// Source-IP allowlist for inbound matching when the carrier's
 	// SBC sits on a different IP than the REGISTER target.
 	AllowedIps []string `protobuf:"bytes,54,rep,name=allowed_ips,json=allowedIps,proto3" json:"allowed_ips,omitempty"`
+	// E.164 numbers this trunk serves on the INBOUND leg. ONLY a
+	// disambiguator: when one source IP fronts several trunks (a carrier
+	// SBC pool fronting multiple DID accounts across workspaces), the
+	// dialed number (To/Request-URI user-part) picks which trunk the call
+	// belongs to. Single trunk per IP => irrelevant. Empty => first-wins
+	// fallback (pre-field behaviour), so populating it never breaks an
+	// already-working call. Backend fills these from dids.trunk_wire_id;
+	// sipmesh matches +-tolerantly (carrier may stamp bare national).
+	InboundDids []string `protobuf:"bytes,60,rep,name=inbound_dids,json=inboundDids,proto3" json:"inbound_dids,omitempty"`
 	// IPv6 vs IPv4 outbound preference.
 	OutboundFamilyPreference []string `protobuf:"bytes,55,rep,name=outbound_family_preference,json=outboundFamilyPreference,proto3" json:"outbound_family_preference,omitempty"`
 	// Default From URI for outbound originates dispatched via this
@@ -2137,6 +2146,13 @@ func (x *Trunk) GetMaxConcurrent() uint32 {
 func (x *Trunk) GetAllowedIps() []string {
 	if x != nil {
 		return x.AllowedIps
+	}
+	return nil
+}
+
+func (x *Trunk) GetInboundDids() []string {
+	if x != nil {
+		return x.InboundDids
 	}
 	return nil
 }
@@ -9074,7 +9090,7 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\x14SEVERITY_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSEVERITY_INFO\x10\x01\x12\x14\n" +
 	"\x10SEVERITY_WARNING\x10\x02\x12\x12\n" +
-	"\x0eSEVERITY_ERROR\x10\x03\"\x92\f\n" +
+	"\x0eSEVERITY_ERROR\x10\x03\"\xb5\f\n" +
 	"\x05Trunk\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12.\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\x1a.sipmesh.api.v1.Trunk.KindR\x04kind\x12=\n" +
@@ -9103,7 +9119,8 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\tcps_limit\x184 \x01(\x01R\bcpsLimit\x12%\n" +
 	"\x0emax_concurrent\x185 \x01(\rR\rmaxConcurrent\x12\x1f\n" +
 	"\vallowed_ips\x186 \x03(\tR\n" +
-	"allowedIps\x12<\n" +
+	"allowedIps\x12!\n" +
+	"\finbound_dids\x18< \x03(\tR\vinboundDids\x12<\n" +
 	"\x1aoutbound_family_preference\x187 \x03(\tR\x18outboundFamilyPreference\x12F\n" +
 	"\x12outbound_caller_id\x188 \x01(\v2\x18.sipmesh.api.v1.CallerIDR\x10outboundCallerId\x12H\n" +
 	"\x0ecaller_id_mode\x18; \x01(\x0e2\".sipmesh.api.v1.Trunk.CallerIDModeR\fcallerIdMode\x12U\n" +

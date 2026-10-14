@@ -213,3 +213,103 @@ func TestOperatorConfig_DialTrunkPlusCalleeAccepted(t *testing.T) {
 		}
 	}
 }
+
+// TestOperatorConfig_WaitForGreeting — the step body is all-optional
+// (zero = engine default), so only a result_field that can't be
+// addressed as `custom.<key>` / `${custom.<key>}` is rejected.
+func TestOperatorConfig_WaitForGreeting(t *testing.T) {
+	cases := []struct {
+		name    string
+		step    *sipmeshapiv1.WaitForGreetingStep
+		wantErr string // substring of the expected diagnostic; "" = valid
+	}{
+		{name: "empty body uses defaults", step: &sipmeshapiv1.WaitForGreetingStep{}},
+		{name: "fully specified", step: &sipmeshapiv1.WaitForGreetingStep{
+			MinSpeechMs:       150,
+			EndpointSilenceMs: 600,
+			NoSpeechTimeoutMs: 2500,
+			MaxGreetingMs:     4000,
+			ResultField:       "greeting_v2",
+		}},
+		{name: "result_field with a space", step: &sipmeshapiv1.WaitForGreetingStep{ResultField: "greeting outcome"}, wantErr: "wait_for_greeting step result_field"},
+		{name: "result_field with a dot", step: &sipmeshapiv1.WaitForGreetingStep{ResultField: "custom.greeting"}, wantErr: "wait_for_greeting step result_field"},
+		{name: "result_field starting with a digit", step: &sipmeshapiv1.WaitForGreetingStep{ResultField: "1st"}, wantErr: "wait_for_greeting step result_field"},
+		{name: "result_field with a template brace", step: &sipmeshapiv1.WaitForGreetingStep{ResultField: "x}"}, wantErr: "wait_for_greeting step result_field"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &sipmeshapiv1.OperatorConfig{
+				Pipelines: []*sipmeshapiv1.Pipeline{{
+					Name: "outbound",
+					Steps: []*sipmeshapiv1.PipelineStep{
+						{WaitForGreeting: tc.step},
+						{Hangup: &sipmeshapiv1.HangupStep{}},
+					},
+				}},
+			}
+			diags := OperatorConfig(cfg)
+			if tc.wantErr == "" {
+				for _, d := range diags {
+					t.Errorf("unexpected diag: %s @ %s", d.GetMessage(), d.GetFieldPath())
+				}
+				return
+			}
+			var found bool
+			for _, d := range diags {
+				if strings.Contains(d.GetMessage(), tc.wantErr) {
+					found = true
+					if d.GetFieldPath() != "/pipelines/0/steps/0/wait_for_greeting/result_field" {
+						t.Errorf("field path = %q", d.GetFieldPath())
+					}
+				}
+			}
+			if !found {
+				t.Errorf("expected %q diag, got:\n%+v", tc.wantErr, diags)
+			}
+		})
+	}
+}
+
+// TestOperatorConfig_NoKindMessageNamesWaitForGreeting — the "exactly
+// one of" list is what authors read when a step lost its kind; a new
+// kind missing from it reads as unsupported.
+func TestOperatorConfig_NoKindMessageNamesWaitForGreeting(t *testing.T) {
+	cfg := &sipmeshapiv1.OperatorConfig{
+		Pipelines: []*sipmeshapiv1.Pipeline{{
+			Name:  "broken",
+			Steps: []*sipmeshapiv1.PipelineStep{{}},
+		}},
+	}
+	for _, d := range OperatorConfig(cfg) {
+		if strings.Contains(d.GetMessage(), "no inner kind set") {
+			if !strings.Contains(d.GetMessage(), "/wait_for_greeting") {
+				t.Errorf("no-kind message does not name wait_for_greeting: %s", d.GetMessage())
+			}
+			return
+		}
+	}
+	t.Error("expected 'no inner kind set' diag")
+}
+
+// TestOperatorConfig_WaitForGreetingCountsAsAKind — a step carrying
+// only wait_for_greeting has a kind; paired with another kind it is
+// named in the "multiple inner kinds" diagnostic.
+func TestOperatorConfig_WaitForGreetingCountsAsAKind(t *testing.T) {
+	cfg := &sipmeshapiv1.OperatorConfig{
+		Pipelines: []*sipmeshapiv1.Pipeline{{
+			Name: "p",
+			Steps: []*sipmeshapiv1.PipelineStep{
+				{WaitForGreeting: &sipmeshapiv1.WaitForGreetingStep{}, Hangup: &sipmeshapiv1.HangupStep{}},
+			},
+		}},
+	}
+	var found bool
+	for _, d := range OperatorConfig(cfg) {
+		if strings.Contains(d.GetMessage(), "multiple inner kinds set (hangup, wait_for_greeting)") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected multiple-kinds diag naming wait_for_greeting, got:\n%+v", OperatorConfig(cfg))
+	}
+}

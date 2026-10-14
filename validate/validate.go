@@ -697,6 +697,7 @@ func validateStepDiscriminators(s *sipmeshapiv1.PipelineStep, path string, out *
 		{s.GetQueue() != nil, "queue"},
 		{s.GetWhisper() != nil, "whisper"},
 		{s.GetOnPeer() != nil, "on_peer"},
+		{s.GetWaitForGreeting() != nil, "wait_for_greeting"},
 	}
 	var setNames []string
 	for _, k := range kinds {
@@ -708,7 +709,7 @@ func validateStepDiscriminators(s *sipmeshapiv1.PipelineStep, path string, out *
 	case 0:
 		*out = append(*out, &sipmeshapiv1.ConfigDiagnostic{
 			Severity:  sipmeshapiv1.ConfigDiagnostic_SEVERITY_ERROR,
-			Message:   "pipeline step has no inner kind set (exactly one of say/listen/converse/dial/bridge/hangup/branch/dtmf/dtmf_collect/set_custom_field/pause/hold/unhold/ready_for_bridge/answer/play_file/http_callback/label/goto/record/sub_pipeline/transfer/queue/whisper/on_peer required)",
+			Message:   "pipeline step has no inner kind set (exactly one of say/listen/converse/dial/bridge/hangup/branch/dtmf/dtmf_collect/set_custom_field/pause/hold/unhold/ready_for_bridge/answer/play_file/http_callback/label/goto/record/sub_pipeline/transfer/queue/whisper/on_peer/wait_for_greeting required)",
 			FieldPath: path,
 		})
 	case 1:
@@ -838,6 +839,17 @@ func validateStepDiscriminators(s *sipmeshapiv1.PipelineStep, path string, out *
 		}
 	}
 
+	if wg := s.GetWaitForGreeting(); wg != nil {
+		if rf := wg.GetResultField(); rf != "" && !customFieldKeyRe.MatchString(rf) {
+			*out = append(*out, &sipmeshapiv1.ConfigDiagnostic{
+				Severity: sipmeshapiv1.ConfigDiagnostic_SEVERITY_ERROR,
+				Message: "wait_for_greeting step result_field must be an identifier " +
+					"(letters, digits, underscore; not starting with a digit), got \"" + rf + "\"",
+				FieldPath: path + "/wait_for_greeting/result_field",
+			})
+		}
+	}
+
 	if b := s.GetBranch(); b != nil {
 		for k, c := range b.GetCases() {
 			validateBranchCasePredicates(c, path+"/branch/cases/"+itoa(k), out)
@@ -856,6 +868,11 @@ func validateStepDiscriminators(s *sipmeshapiv1.PipelineStep, path string, out *
 		}
 	}
 }
+
+// customFieldKeyRe is the shape a step-authored CustomFields key must
+// have to be addressable as `custom.<key>` in a branch predicate and
+// as `${custom.<key>}` in a template.
+var customFieldKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // branchPredicateKeys is the closed set of typed predicate field names
 // branchPredicateSchema accepts. `custom.<field>` keys are matched

@@ -3674,33 +3674,34 @@ type PipelineStep struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Each PipelineStep entry sets exactly ONE of the inner messages.
 	// Validated server-side; UI renders one node per entry.
-	Say            *SayStep            `protobuf:"bytes,1,opt,name=say,proto3" json:"say,omitempty"`
-	Listen         *ListenStep         `protobuf:"bytes,2,opt,name=listen,proto3" json:"listen,omitempty"`
-	Converse       *ConverseStep       `protobuf:"bytes,3,opt,name=converse,proto3" json:"converse,omitempty"`
-	Dial           *DialStep           `protobuf:"bytes,4,opt,name=dial,proto3" json:"dial,omitempty"`
-	Bridge         *BridgeStep         `protobuf:"bytes,5,opt,name=bridge,proto3" json:"bridge,omitempty"`
-	Hangup         *HangupStep         `protobuf:"bytes,6,opt,name=hangup,proto3" json:"hangup,omitempty"`
-	Branch         *BranchStep         `protobuf:"bytes,7,opt,name=branch,proto3" json:"branch,omitempty"`
-	Dtmf           *DTMFStep           `protobuf:"bytes,8,opt,name=dtmf,proto3" json:"dtmf,omitempty"`
-	SetCustomField *SetCustomFieldStep `protobuf:"bytes,9,opt,name=set_custom_field,json=setCustomField,proto3" json:"set_custom_field,omitempty"`
-	Pause          *PauseStep          `protobuf:"bytes,10,opt,name=pause,proto3" json:"pause,omitempty"`
-	Hold           *HoldStep           `protobuf:"bytes,11,opt,name=hold,proto3" json:"hold,omitempty"`
-	Unhold         *UnholdStep         `protobuf:"bytes,12,opt,name=unhold,proto3" json:"unhold,omitempty"`
-	DtmfCollect    *DTMFCollectStep    `protobuf:"bytes,13,opt,name=dtmf_collect,json=dtmfCollect,proto3" json:"dtmf_collect,omitempty"`
-	ReadyForBridge *ReadyForBridgeStep `protobuf:"bytes,14,opt,name=ready_for_bridge,json=readyForBridge,proto3" json:"ready_for_bridge,omitempty"`
-	PlayFile       *PlayFileStep       `protobuf:"bytes,15,opt,name=play_file,json=playFile,proto3" json:"play_file,omitempty"`
-	Answer         *AnswerStep         `protobuf:"bytes,16,opt,name=answer,proto3" json:"answer,omitempty"`
-	HttpCallback   *HTTPCallbackStep   `protobuf:"bytes,17,opt,name=http_callback,json=httpCallback,proto3" json:"http_callback,omitempty"`
-	Label          *LabelStep          `protobuf:"bytes,18,opt,name=label,proto3" json:"label,omitempty"`
-	Goto           *GotoStep           `protobuf:"bytes,19,opt,name=goto,proto3" json:"goto,omitempty"`
-	Record         *RecordStep         `protobuf:"bytes,20,opt,name=record,proto3" json:"record,omitempty"`
-	SubPipeline    *SubPipelineStep    `protobuf:"bytes,21,opt,name=sub_pipeline,json=subPipeline,proto3" json:"sub_pipeline,omitempty"`
-	Transfer       *TransferStep       `protobuf:"bytes,22,opt,name=transfer,proto3" json:"transfer,omitempty"`
-	Queue          *QueueStep          `protobuf:"bytes,23,opt,name=queue,proto3" json:"queue,omitempty"`
-	Whisper        *WhisperStep        `protobuf:"bytes,24,opt,name=whisper,proto3" json:"whisper,omitempty"`
-	OnPeer         *OnPeerStep         `protobuf:"bytes,25,opt,name=on_peer,json=onPeer,proto3" json:"on_peer,omitempty"` // Add new step kinds here as they land in the engine.
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	Say             *SayStep             `protobuf:"bytes,1,opt,name=say,proto3" json:"say,omitempty"`
+	Listen          *ListenStep          `protobuf:"bytes,2,opt,name=listen,proto3" json:"listen,omitempty"`
+	Converse        *ConverseStep        `protobuf:"bytes,3,opt,name=converse,proto3" json:"converse,omitempty"`
+	Dial            *DialStep            `protobuf:"bytes,4,opt,name=dial,proto3" json:"dial,omitempty"`
+	Bridge          *BridgeStep          `protobuf:"bytes,5,opt,name=bridge,proto3" json:"bridge,omitempty"`
+	Hangup          *HangupStep          `protobuf:"bytes,6,opt,name=hangup,proto3" json:"hangup,omitempty"`
+	Branch          *BranchStep          `protobuf:"bytes,7,opt,name=branch,proto3" json:"branch,omitempty"`
+	Dtmf            *DTMFStep            `protobuf:"bytes,8,opt,name=dtmf,proto3" json:"dtmf,omitempty"`
+	SetCustomField  *SetCustomFieldStep  `protobuf:"bytes,9,opt,name=set_custom_field,json=setCustomField,proto3" json:"set_custom_field,omitempty"`
+	Pause           *PauseStep           `protobuf:"bytes,10,opt,name=pause,proto3" json:"pause,omitempty"`
+	Hold            *HoldStep            `protobuf:"bytes,11,opt,name=hold,proto3" json:"hold,omitempty"`
+	Unhold          *UnholdStep          `protobuf:"bytes,12,opt,name=unhold,proto3" json:"unhold,omitempty"`
+	DtmfCollect     *DTMFCollectStep     `protobuf:"bytes,13,opt,name=dtmf_collect,json=dtmfCollect,proto3" json:"dtmf_collect,omitempty"`
+	ReadyForBridge  *ReadyForBridgeStep  `protobuf:"bytes,14,opt,name=ready_for_bridge,json=readyForBridge,proto3" json:"ready_for_bridge,omitempty"`
+	PlayFile        *PlayFileStep        `protobuf:"bytes,15,opt,name=play_file,json=playFile,proto3" json:"play_file,omitempty"`
+	Answer          *AnswerStep          `protobuf:"bytes,16,opt,name=answer,proto3" json:"answer,omitempty"`
+	HttpCallback    *HTTPCallbackStep    `protobuf:"bytes,17,opt,name=http_callback,json=httpCallback,proto3" json:"http_callback,omitempty"`
+	Label           *LabelStep           `protobuf:"bytes,18,opt,name=label,proto3" json:"label,omitempty"`
+	Goto            *GotoStep            `protobuf:"bytes,19,opt,name=goto,proto3" json:"goto,omitempty"`
+	Record          *RecordStep          `protobuf:"bytes,20,opt,name=record,proto3" json:"record,omitempty"`
+	SubPipeline     *SubPipelineStep     `protobuf:"bytes,21,opt,name=sub_pipeline,json=subPipeline,proto3" json:"sub_pipeline,omitempty"`
+	Transfer        *TransferStep        `protobuf:"bytes,22,opt,name=transfer,proto3" json:"transfer,omitempty"`
+	Queue           *QueueStep           `protobuf:"bytes,23,opt,name=queue,proto3" json:"queue,omitempty"`
+	Whisper         *WhisperStep         `protobuf:"bytes,24,opt,name=whisper,proto3" json:"whisper,omitempty"`
+	OnPeer          *OnPeerStep          `protobuf:"bytes,25,opt,name=on_peer,json=onPeer,proto3" json:"on_peer,omitempty"`
+	WaitForGreeting *WaitForGreetingStep `protobuf:"bytes,26,opt,name=wait_for_greeting,json=waitForGreeting,proto3" json:"wait_for_greeting,omitempty"` // Add new step kinds here as they land in the engine.
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PipelineStep) Reset() {
@@ -3904,6 +3905,13 @@ func (x *PipelineStep) GetWhisper() *WhisperStep {
 func (x *PipelineStep) GetOnPeer() *OnPeerStep {
 	if x != nil {
 		return x.OnPeer
+	}
+	return nil
+}
+
+func (x *PipelineStep) GetWaitForGreeting() *WaitForGreetingStep {
+	if x != nil {
+		return x.WaitForGreeting
 	}
 	return nil
 }
@@ -9003,6 +9011,131 @@ func (x *OnPeerStep) GetSteps() []*PipelineStep {
 	return nil
 }
 
+// =============================================================================
+// WaitForGreetingStep — listen to the callee right after answer and
+// end once their greeting is over, so the next step (typically
+// play_file / say on an outbound call) starts after the callee's
+// "Hello?" instead of talking over it.
+//
+// Canonical outbound opening:
+//
+//   - wait_for_greeting: {}
+//   - branch:
+//     cases:
+//   - when: { custom.greeting_outcome: long }
+//     steps: [ hangup: {} ]
+//   - play_file: { path: promo.wav }
+//
+// Voice activity and timing only: no STT, no LLM. Outcomes:
+//   - "human":  voiced speech (onset) followed by endpoint_silence_ms
+//     of silence — a short greeting, then a pause.
+//   - "silent": no onset within no_speech_timeout_ms of step start.
+//   - "long":   still talking max_greeting_ms after onset — the
+//     cadence of a voicemail greeting, an IVR or a
+//     talkative person.
+//
+// The outcome lands in CallState.CustomFields[result_field]; the
+// step also writes CustomFields["greeting_decision_ms"] = ms from
+// step start to the verdict. Routing on the outcome is done by a
+// following BranchStep with a `custom.<result_field>` predicate.
+// The step never fails the flow; a hangup during the wait just
+// ends the call.
+//
+// First slice of the engine's AMD design (DetectAnswerStep): a
+// later real-time AMD may add content and beep detection without
+// changing what human / silent / long mean.
+//
+// Every field is optional; zero / empty means the default.
+type WaitForGreetingStep struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Consecutive voiced audio needed before the callee counts as
+	// speaking (onset). Shorter blips (clicks, breaths) are ignored.
+	// Default 200.
+	MinSpeechMs uint32 `protobuf:"varint,1,opt,name=min_speech_ms,json=minSpeechMs,proto3" json:"min_speech_ms,omitempty"`
+	// Silence after onset that ends the greeting ("human"). Same
+	// name and jitter-buffer compensation as ListenStep. Default 500.
+	EndpointSilenceMs uint32 `protobuf:"varint,2,opt,name=endpoint_silence_ms,json=endpointSilenceMs,proto3" json:"endpoint_silence_ms,omitempty"`
+	// Measured from step start: no onset by then gives "silent".
+	// Default 3000.
+	NoSpeechTimeoutMs uint32 `protobuf:"varint,3,opt,name=no_speech_timeout_ms,json=noSpeechTimeoutMs,proto3" json:"no_speech_timeout_ms,omitempty"`
+	// Measured from onset: still talking at this point gives "long".
+	// Default 3500.
+	MaxGreetingMs uint32 `protobuf:"varint,4,opt,name=max_greeting_ms,json=maxGreetingMs,proto3" json:"max_greeting_ms,omitempty"`
+	// CallState.CustomFields key the outcome is written to, same
+	// convention as RecordStep / TransferStep. Must be an identifier
+	// (letters, digits, underscore; not starting with a digit) so it
+	// is addressable as `custom.<key>` and `${custom.<key>}`.
+	// Default "greeting_outcome".
+	ResultField   string `protobuf:"bytes,5,opt,name=result_field,json=resultField,proto3" json:"result_field,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WaitForGreetingStep) Reset() {
+	*x = WaitForGreetingStep{}
+	mi := &file_sipmesh_api_v1_operatorapi_proto_msgTypes[105]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WaitForGreetingStep) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WaitForGreetingStep) ProtoMessage() {}
+
+func (x *WaitForGreetingStep) ProtoReflect() protoreflect.Message {
+	mi := &file_sipmesh_api_v1_operatorapi_proto_msgTypes[105]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WaitForGreetingStep.ProtoReflect.Descriptor instead.
+func (*WaitForGreetingStep) Descriptor() ([]byte, []int) {
+	return file_sipmesh_api_v1_operatorapi_proto_rawDescGZIP(), []int{105}
+}
+
+func (x *WaitForGreetingStep) GetMinSpeechMs() uint32 {
+	if x != nil {
+		return x.MinSpeechMs
+	}
+	return 0
+}
+
+func (x *WaitForGreetingStep) GetEndpointSilenceMs() uint32 {
+	if x != nil {
+		return x.EndpointSilenceMs
+	}
+	return 0
+}
+
+func (x *WaitForGreetingStep) GetNoSpeechTimeoutMs() uint32 {
+	if x != nil {
+		return x.NoSpeechTimeoutMs
+	}
+	return 0
+}
+
+func (x *WaitForGreetingStep) GetMaxGreetingMs() uint32 {
+	if x != nil {
+		return x.MaxGreetingMs
+	}
+	return 0
+}
+
+func (x *WaitForGreetingStep) GetResultField() string {
+	if x != nil {
+		return x.ResultField
+	}
+	return ""
+}
+
 var File_sipmesh_api_v1_operatorapi_proto protoreflect.FileDescriptor
 
 const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
@@ -9258,8 +9391,7 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\x05names\x18\x03 \x03(\tR\x05names\"$\n" +
 	"\n" +
 	"StringList\x12\x16\n" +
-	"\x06values\x18\x01 \x03(\tR\x06values\"\xf6\n" +
-	"\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values\"\xc7\v\n" +
 	"\fPipelineStep\x12)\n" +
 	"\x03say\x18\x01 \x01(\v2\x17.sipmesh.api.v1.SayStepR\x03say\x122\n" +
 	"\x06listen\x18\x02 \x01(\v2\x1a.sipmesh.api.v1.ListenStepR\x06listen\x128\n" +
@@ -9286,7 +9418,8 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\btransfer\x18\x16 \x01(\v2\x1c.sipmesh.api.v1.TransferStepR\btransfer\x12/\n" +
 	"\x05queue\x18\x17 \x01(\v2\x19.sipmesh.api.v1.QueueStepR\x05queue\x125\n" +
 	"\awhisper\x18\x18 \x01(\v2\x1b.sipmesh.api.v1.WhisperStepR\awhisper\x123\n" +
-	"\aon_peer\x18\x19 \x01(\v2\x1a.sipmesh.api.v1.OnPeerStepR\x06onPeer\"\xec\x02\n" +
+	"\aon_peer\x18\x19 \x01(\v2\x1a.sipmesh.api.v1.OnPeerStepR\x06onPeer\x12O\n" +
+	"\x11wait_for_greeting\x18\x1a \x01(\v2#.sipmesh.api.v1.WaitForGreetingStepR\x0fwaitForGreeting\"\xec\x02\n" +
 	"\aSayStep\x12U\n" +
 	"\x10text_by_language\x18\x01 \x03(\v2+.sipmesh.api.v1.SayStep.TextByLanguageEntryR\x0etextByLanguage\x12X\n" +
 	"\x11voice_by_language\x18\x02 \x03(\v2,.sipmesh.api.v1.SayStep.VoiceByLanguageEntryR\x0fvoiceByLanguage\x12)\n" +
@@ -9741,7 +9874,13 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"OnPeerStep\x12\x1f\n" +
 	"\vpeer_source\x18\x01 \x01(\tR\n" +
 	"peerSource\x122\n" +
-	"\x05steps\x18\x02 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps*\x82\x01\n" +
+	"\x05steps\x18\x02 \x03(\v2\x1c.sipmesh.api.v1.PipelineStepR\x05steps\"\xe5\x01\n" +
+	"\x13WaitForGreetingStep\x12\"\n" +
+	"\rmin_speech_ms\x18\x01 \x01(\rR\vminSpeechMs\x12.\n" +
+	"\x13endpoint_silence_ms\x18\x02 \x01(\rR\x11endpointSilenceMs\x12/\n" +
+	"\x14no_speech_timeout_ms\x18\x03 \x01(\rR\x11noSpeechTimeoutMs\x12&\n" +
+	"\x0fmax_greeting_ms\x18\x04 \x01(\rR\rmaxGreetingMs\x12!\n" +
+	"\fresult_field\x18\x05 \x01(\tR\vresultField*\x82\x01\n" +
 	"\x10CallArtifactKind\x12\x1d\n" +
 	"\x19CALL_ARTIFACT_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11CALL_ARTIFACT_CDR\x10\x01\x12\x1b\n" +
@@ -9788,7 +9927,7 @@ func file_sipmesh_api_v1_operatorapi_proto_rawDescGZIP() []byte {
 }
 
 var file_sipmesh_api_v1_operatorapi_proto_enumTypes = make([]protoimpl.EnumInfo, 15)
-var file_sipmesh_api_v1_operatorapi_proto_msgTypes = make([]protoimpl.MessageInfo, 135)
+var file_sipmesh_api_v1_operatorapi_proto_msgTypes = make([]protoimpl.MessageInfo, 136)
 var file_sipmesh_api_v1_operatorapi_proto_goTypes = []any{
 	(CallArtifactKind)(0),                      // 0: sipmesh.api.v1.CallArtifactKind
 	(ResourceChange_ChangeKind)(0),             // 1: sipmesh.api.v1.ResourceChange.ChangeKind
@@ -9910,36 +10049,37 @@ var file_sipmesh_api_v1_operatorapi_proto_goTypes = []any{
 	(*PullConfigSetResponse)(nil),              // 117: sipmesh.api.v1.PullConfigSetResponse
 	(*WhisperStep)(nil),                        // 118: sipmesh.api.v1.WhisperStep
 	(*OnPeerStep)(nil),                         // 119: sipmesh.api.v1.OnPeerStep
-	nil,                                        // 120: sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntry
-	nil,                                        // 121: sipmesh.api.v1.Pipeline.BargeInAckTextByLanguageEntry
-	nil,                                        // 122: sipmesh.api.v1.Pipeline.BargeInAckTextPoolByLanguageEntry
-	nil,                                        // 123: sipmesh.api.v1.SayStep.TextByLanguageEntry
-	nil,                                        // 124: sipmesh.api.v1.SayStep.VoiceByLanguageEntry
-	nil,                                        // 125: sipmesh.api.v1.ConverseStep.SystemByLanguageEntry
-	nil,                                        // 126: sipmesh.api.v1.ConverseStep.VoiceByLanguageEntry
-	nil,                                        // 127: sipmesh.api.v1.ConverseStep.FallbackTextByLanguageEntry
-	nil,                                        // 128: sipmesh.api.v1.ConverseStep.AckIntroTextByLanguageEntry
-	nil,                                        // 129: sipmesh.api.v1.ConverseStep.SlowAckTextByLanguageEntry
-	nil,                                        // 130: sipmesh.api.v1.ConverseStep.RepromptTextByLanguageEntry
-	nil,                                        // 131: sipmesh.api.v1.ConverseStep.OnMaxTurnsTextByLanguageEntry
-	nil,                                        // 132: sipmesh.api.v1.ConverseStep.UnsupportedLangTextByLanguageEntry
-	nil,                                        // 133: sipmesh.api.v1.ConverseStep.FallbackTextPoolByLanguageEntry
-	nil,                                        // 134: sipmesh.api.v1.ConverseStep.AckIntroTextPoolByLanguageEntry
-	nil,                                        // 135: sipmesh.api.v1.ConverseStep.SlowAckTextPoolByLanguageEntry
-	nil,                                        // 136: sipmesh.api.v1.ConverseStep.RepromptTextPoolByLanguageEntry
-	nil,                                        // 137: sipmesh.api.v1.ConverseStep.OnMaxTurnsTextPoolByLanguageEntry
-	nil,                                        // 138: sipmesh.api.v1.ConverseStep.UnsupportedLangTextPoolByLanguageEntry
-	nil,                                        // 139: sipmesh.api.v1.ConverseStep.PreDoneSpeakTextByLanguageEntry
-	nil,                                        // 140: sipmesh.api.v1.BranchCase.WhenEntry
-	nil,                                        // 141: sipmesh.api.v1.BranchCase.WhenMatchEntry
-	nil,                                        // 142: sipmesh.api.v1.HTTPCallbackStep.HeadersEntry
-	nil,                                        // 143: sipmesh.api.v1.SubPipelineStep.ArgsEntry
-	nil,                                        // 144: sipmesh.api.v1.WhisperStep.TextByLanguageEntry
-	nil,                                        // 145: sipmesh.api.v1.WhisperStep.TextPoolByLanguageEntry
-	nil,                                        // 146: sipmesh.api.v1.WhisperStep.VoiceByLanguageEntry
-	nil,                                        // 147: sipmesh.api.v1.WhisperStep.AcceptPhrasesByLanguageEntry
-	nil,                                        // 148: sipmesh.api.v1.WhisperStep.RejectPhrasesByLanguageEntry
-	nil,                                        // 149: sipmesh.api.v1.WhisperStep.RepeatPhrasesByLanguageEntry
+	(*WaitForGreetingStep)(nil),                // 120: sipmesh.api.v1.WaitForGreetingStep
+	nil,                                        // 121: sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntry
+	nil,                                        // 122: sipmesh.api.v1.Pipeline.BargeInAckTextByLanguageEntry
+	nil,                                        // 123: sipmesh.api.v1.Pipeline.BargeInAckTextPoolByLanguageEntry
+	nil,                                        // 124: sipmesh.api.v1.SayStep.TextByLanguageEntry
+	nil,                                        // 125: sipmesh.api.v1.SayStep.VoiceByLanguageEntry
+	nil,                                        // 126: sipmesh.api.v1.ConverseStep.SystemByLanguageEntry
+	nil,                                        // 127: sipmesh.api.v1.ConverseStep.VoiceByLanguageEntry
+	nil,                                        // 128: sipmesh.api.v1.ConverseStep.FallbackTextByLanguageEntry
+	nil,                                        // 129: sipmesh.api.v1.ConverseStep.AckIntroTextByLanguageEntry
+	nil,                                        // 130: sipmesh.api.v1.ConverseStep.SlowAckTextByLanguageEntry
+	nil,                                        // 131: sipmesh.api.v1.ConverseStep.RepromptTextByLanguageEntry
+	nil,                                        // 132: sipmesh.api.v1.ConverseStep.OnMaxTurnsTextByLanguageEntry
+	nil,                                        // 133: sipmesh.api.v1.ConverseStep.UnsupportedLangTextByLanguageEntry
+	nil,                                        // 134: sipmesh.api.v1.ConverseStep.FallbackTextPoolByLanguageEntry
+	nil,                                        // 135: sipmesh.api.v1.ConverseStep.AckIntroTextPoolByLanguageEntry
+	nil,                                        // 136: sipmesh.api.v1.ConverseStep.SlowAckTextPoolByLanguageEntry
+	nil,                                        // 137: sipmesh.api.v1.ConverseStep.RepromptTextPoolByLanguageEntry
+	nil,                                        // 138: sipmesh.api.v1.ConverseStep.OnMaxTurnsTextPoolByLanguageEntry
+	nil,                                        // 139: sipmesh.api.v1.ConverseStep.UnsupportedLangTextPoolByLanguageEntry
+	nil,                                        // 140: sipmesh.api.v1.ConverseStep.PreDoneSpeakTextByLanguageEntry
+	nil,                                        // 141: sipmesh.api.v1.BranchCase.WhenEntry
+	nil,                                        // 142: sipmesh.api.v1.BranchCase.WhenMatchEntry
+	nil,                                        // 143: sipmesh.api.v1.HTTPCallbackStep.HeadersEntry
+	nil,                                        // 144: sipmesh.api.v1.SubPipelineStep.ArgsEntry
+	nil,                                        // 145: sipmesh.api.v1.WhisperStep.TextByLanguageEntry
+	nil,                                        // 146: sipmesh.api.v1.WhisperStep.TextPoolByLanguageEntry
+	nil,                                        // 147: sipmesh.api.v1.WhisperStep.VoiceByLanguageEntry
+	nil,                                        // 148: sipmesh.api.v1.WhisperStep.AcceptPhrasesByLanguageEntry
+	nil,                                        // 149: sipmesh.api.v1.WhisperStep.RejectPhrasesByLanguageEntry
+	nil,                                        // 150: sipmesh.api.v1.WhisperStep.RepeatPhrasesByLanguageEntry
 }
 var file_sipmesh_api_v1_operatorapi_proto_depIdxs = []int32{
 	28,  // 0: sipmesh.api.v1.OperatorConfig.trunks:type_name -> sipmesh.api.v1.Trunk
@@ -9987,9 +10127,9 @@ var file_sipmesh_api_v1_operatorapi_proto_depIdxs = []int32{
 	43,  // 42: sipmesh.api.v1.PeerRoute.caller_id:type_name -> sipmesh.api.v1.CallerID
 	43,  // 43: sipmesh.api.v1.ForwardRoute.caller_id:type_name -> sipmesh.api.v1.CallerID
 	48,  // 44: sipmesh.api.v1.Pipeline.steps:type_name -> sipmesh.api.v1.PipelineStep
-	120, // 45: sipmesh.api.v1.Pipeline.voice_pools_by_language:type_name -> sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntry
-	121, // 46: sipmesh.api.v1.Pipeline.barge_in_ack_text_by_language:type_name -> sipmesh.api.v1.Pipeline.BargeInAckTextByLanguageEntry
-	122, // 47: sipmesh.api.v1.Pipeline.barge_in_ack_text_pool_by_language:type_name -> sipmesh.api.v1.Pipeline.BargeInAckTextPoolByLanguageEntry
+	121, // 45: sipmesh.api.v1.Pipeline.voice_pools_by_language:type_name -> sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntry
+	122, // 46: sipmesh.api.v1.Pipeline.barge_in_ack_text_by_language:type_name -> sipmesh.api.v1.Pipeline.BargeInAckTextByLanguageEntry
+	123, // 47: sipmesh.api.v1.Pipeline.barge_in_ack_text_pool_by_language:type_name -> sipmesh.api.v1.Pipeline.BargeInAckTextPoolByLanguageEntry
 	46,  // 48: sipmesh.api.v1.VoicePool.entries:type_name -> sipmesh.api.v1.VoiceEntry
 	49,  // 49: sipmesh.api.v1.PipelineStep.say:type_name -> sipmesh.api.v1.SayStep
 	50,  // 50: sipmesh.api.v1.PipelineStep.listen:type_name -> sipmesh.api.v1.ListenStep
@@ -10016,124 +10156,125 @@ var file_sipmesh_api_v1_operatorapi_proto_depIdxs = []int32{
 	76,  // 71: sipmesh.api.v1.PipelineStep.queue:type_name -> sipmesh.api.v1.QueueStep
 	118, // 72: sipmesh.api.v1.PipelineStep.whisper:type_name -> sipmesh.api.v1.WhisperStep
 	119, // 73: sipmesh.api.v1.PipelineStep.on_peer:type_name -> sipmesh.api.v1.OnPeerStep
-	123, // 74: sipmesh.api.v1.SayStep.text_by_language:type_name -> sipmesh.api.v1.SayStep.TextByLanguageEntry
-	124, // 75: sipmesh.api.v1.SayStep.voice_by_language:type_name -> sipmesh.api.v1.SayStep.VoiceByLanguageEntry
-	125, // 76: sipmesh.api.v1.ConverseStep.system_by_language:type_name -> sipmesh.api.v1.ConverseStep.SystemByLanguageEntry
-	126, // 77: sipmesh.api.v1.ConverseStep.voice_by_language:type_name -> sipmesh.api.v1.ConverseStep.VoiceByLanguageEntry
-	127, // 78: sipmesh.api.v1.ConverseStep.fallback_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.FallbackTextByLanguageEntry
-	128, // 79: sipmesh.api.v1.ConverseStep.ack_intro_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.AckIntroTextByLanguageEntry
-	129, // 80: sipmesh.api.v1.ConverseStep.slow_ack_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.SlowAckTextByLanguageEntry
-	130, // 81: sipmesh.api.v1.ConverseStep.reprompt_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.RepromptTextByLanguageEntry
-	131, // 82: sipmesh.api.v1.ConverseStep.on_max_turns_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.OnMaxTurnsTextByLanguageEntry
-	132, // 83: sipmesh.api.v1.ConverseStep.unsupported_lang_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.UnsupportedLangTextByLanguageEntry
-	53,  // 84: sipmesh.api.v1.ConverseStep.interrupt_on_custom_field:type_name -> sipmesh.api.v1.ConverseStepInterruptOnCustomField
-	52,  // 85: sipmesh.api.v1.ConverseStep.ack_tone:type_name -> sipmesh.api.v1.SineToneSpec
-	133, // 86: sipmesh.api.v1.ConverseStep.fallback_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.FallbackTextPoolByLanguageEntry
-	134, // 87: sipmesh.api.v1.ConverseStep.ack_intro_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.AckIntroTextPoolByLanguageEntry
-	135, // 88: sipmesh.api.v1.ConverseStep.slow_ack_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.SlowAckTextPoolByLanguageEntry
-	136, // 89: sipmesh.api.v1.ConverseStep.reprompt_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.RepromptTextPoolByLanguageEntry
-	137, // 90: sipmesh.api.v1.ConverseStep.on_max_turns_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.OnMaxTurnsTextPoolByLanguageEntry
-	138, // 91: sipmesh.api.v1.ConverseStep.unsupported_lang_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.UnsupportedLangTextPoolByLanguageEntry
-	139, // 92: sipmesh.api.v1.ConverseStep.pre_done_speak_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.PreDoneSpeakTextByLanguageEntry
-	55,  // 93: sipmesh.api.v1.DialStep.waiting:type_name -> sipmesh.api.v1.WaitingPolicy
-	43,  // 94: sipmesh.api.v1.DialStep.caller_id:type_name -> sipmesh.api.v1.CallerID
-	9,   // 95: sipmesh.api.v1.WaitingPolicy.mode:type_name -> sipmesh.api.v1.WaitingPolicy.Mode
-	59,  // 96: sipmesh.api.v1.BranchStep.cases:type_name -> sipmesh.api.v1.BranchCase
-	48,  // 97: sipmesh.api.v1.BranchStep.default_steps:type_name -> sipmesh.api.v1.PipelineStep
-	140, // 98: sipmesh.api.v1.BranchCase.when:type_name -> sipmesh.api.v1.BranchCase.WhenEntry
-	48,  // 99: sipmesh.api.v1.BranchCase.steps:type_name -> sipmesh.api.v1.PipelineStep
-	141, // 100: sipmesh.api.v1.BranchCase.when_match:type_name -> sipmesh.api.v1.BranchCase.WhenMatchEntry
-	10,  // 101: sipmesh.api.v1.HoldStep.mode:type_name -> sipmesh.api.v1.HoldStep.Mode
-	11,  // 102: sipmesh.api.v1.HTTPCallbackStep.method:type_name -> sipmesh.api.v1.HTTPCallbackStep.Method
-	142, // 103: sipmesh.api.v1.HTTPCallbackStep.headers:type_name -> sipmesh.api.v1.HTTPCallbackStep.HeadersEntry
-	12,  // 104: sipmesh.api.v1.HTTPCallbackStep.on_error:type_name -> sipmesh.api.v1.HTTPCallbackStep.OnError
-	52,  // 105: sipmesh.api.v1.RecordStep.pre_record_tone:type_name -> sipmesh.api.v1.SineToneSpec
-	13,  // 106: sipmesh.api.v1.TransferStep.mode:type_name -> sipmesh.api.v1.TransferStep.Mode
-	143, // 107: sipmesh.api.v1.SubPipelineStep.args:type_name -> sipmesh.api.v1.SubPipelineStep.ArgsEntry
-	48,  // 108: sipmesh.api.v1.QueueStep.on_timeout_steps:type_name -> sipmesh.api.v1.PipelineStep
-	28,  // 109: sipmesh.api.v1.ListTrunksResponse.trunks:type_name -> sipmesh.api.v1.Trunk
-	44,  // 110: sipmesh.api.v1.ListPipelinesResponse.pipelines:type_name -> sipmesh.api.v1.Pipeline
-	36,  // 111: sipmesh.api.v1.ListRoutesResponse.routes:type_name -> sipmesh.api.v1.Route
-	43,  // 112: sipmesh.api.v1.OriginateCallRequestV2.caller_id:type_name -> sipmesh.api.v1.CallerID
-	91,  // 113: sipmesh.api.v1.ListCallsResponse.calls:type_name -> sipmesh.api.v1.CallSummary
-	91,  // 114: sipmesh.api.v1.CallDetail.summary:type_name -> sipmesh.api.v1.CallSummary
-	98,  // 115: sipmesh.api.v1.ListWorkersResponse.workers:type_name -> sipmesh.api.v1.WorkerSummaryV2
-	98,  // 116: sipmesh.api.v1.WorkerDetail.summary:type_name -> sipmesh.api.v1.WorkerSummaryV2
-	103, // 117: sipmesh.api.v1.AIWorkerCapability.voices:type_name -> sipmesh.api.v1.VoiceInfo
-	104, // 118: sipmesh.api.v1.ListAIWorkersResponse.workers:type_name -> sipmesh.api.v1.AIWorkerCapability
-	113, // 119: sipmesh.api.v1.ListCallArchiveResponse.calls:type_name -> sipmesh.api.v1.CallArchiveSummary
-	0,   // 120: sipmesh.api.v1.GetCallArtifactURLRequest.kind:type_name -> sipmesh.api.v1.CallArtifactKind
-	15,  // 121: sipmesh.api.v1.PullConfigSetResponse.config:type_name -> sipmesh.api.v1.OperatorConfig
-	144, // 122: sipmesh.api.v1.WhisperStep.text_by_language:type_name -> sipmesh.api.v1.WhisperStep.TextByLanguageEntry
-	145, // 123: sipmesh.api.v1.WhisperStep.text_pool_by_language:type_name -> sipmesh.api.v1.WhisperStep.TextPoolByLanguageEntry
-	146, // 124: sipmesh.api.v1.WhisperStep.voice_by_language:type_name -> sipmesh.api.v1.WhisperStep.VoiceByLanguageEntry
-	14,  // 125: sipmesh.api.v1.WhisperStep.on_timeout:type_name -> sipmesh.api.v1.WhisperStep.TimeoutBehavior
-	147, // 126: sipmesh.api.v1.WhisperStep.accept_phrases_by_language:type_name -> sipmesh.api.v1.WhisperStep.AcceptPhrasesByLanguageEntry
-	148, // 127: sipmesh.api.v1.WhisperStep.reject_phrases_by_language:type_name -> sipmesh.api.v1.WhisperStep.RejectPhrasesByLanguageEntry
-	149, // 128: sipmesh.api.v1.WhisperStep.repeat_phrases_by_language:type_name -> sipmesh.api.v1.WhisperStep.RepeatPhrasesByLanguageEntry
-	48,  // 129: sipmesh.api.v1.OnPeerStep.steps:type_name -> sipmesh.api.v1.PipelineStep
-	45,  // 130: sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntry.value:type_name -> sipmesh.api.v1.VoicePool
-	47,  // 131: sipmesh.api.v1.Pipeline.BargeInAckTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 132: sipmesh.api.v1.ConverseStep.FallbackTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 133: sipmesh.api.v1.ConverseStep.AckIntroTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 134: sipmesh.api.v1.ConverseStep.SlowAckTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 135: sipmesh.api.v1.ConverseStep.RepromptTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 136: sipmesh.api.v1.ConverseStep.OnMaxTurnsTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 137: sipmesh.api.v1.ConverseStep.UnsupportedLangTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	60,  // 138: sipmesh.api.v1.BranchCase.WhenMatchEntry.value:type_name -> sipmesh.api.v1.Match
-	47,  // 139: sipmesh.api.v1.WhisperStep.TextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 140: sipmesh.api.v1.WhisperStep.AcceptPhrasesByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 141: sipmesh.api.v1.WhisperStep.RejectPhrasesByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	47,  // 142: sipmesh.api.v1.WhisperStep.RepeatPhrasesByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
-	17,  // 143: sipmesh.api.v1.OperatorAPI.GetOperatorConfig:input_type -> sipmesh.api.v1.GetOperatorConfigRequest
-	19,  // 144: sipmesh.api.v1.OperatorAPI.WriteConfig:input_type -> sipmesh.api.v1.WriteConfigRequest
-	25,  // 145: sipmesh.api.v1.OperatorAPI.ImportConfig:input_type -> sipmesh.api.v1.ImportConfigRequest
-	77,  // 146: sipmesh.api.v1.OperatorAPI.ListTrunks:input_type -> sipmesh.api.v1.ListTrunksRequest
-	79,  // 147: sipmesh.api.v1.OperatorAPI.GetTrunk:input_type -> sipmesh.api.v1.GetTrunkRequest
-	80,  // 148: sipmesh.api.v1.OperatorAPI.DescribeTrunk:input_type -> sipmesh.api.v1.DescribeTrunkRequest
-	82,  // 149: sipmesh.api.v1.OperatorAPI.ListPipelines:input_type -> sipmesh.api.v1.ListPipelinesRequest
-	84,  // 150: sipmesh.api.v1.OperatorAPI.GetPipeline:input_type -> sipmesh.api.v1.GetPipelineRequest
-	85,  // 151: sipmesh.api.v1.OperatorAPI.ListRoutes:input_type -> sipmesh.api.v1.ListRoutesRequest
-	87,  // 152: sipmesh.api.v1.OperatorAPI.OriginateCall:input_type -> sipmesh.api.v1.OriginateCallRequestV2
-	89,  // 153: sipmesh.api.v1.OperatorAPI.ListCalls:input_type -> sipmesh.api.v1.ListCallsRequest
-	92,  // 154: sipmesh.api.v1.OperatorAPI.GetCall:input_type -> sipmesh.api.v1.GetCallRequest
-	94,  // 155: sipmesh.api.v1.OperatorAPI.HangupCall:input_type -> sipmesh.api.v1.HangupCallRequest
-	96,  // 156: sipmesh.api.v1.OperatorAPI.ListWorkers:input_type -> sipmesh.api.v1.ListWorkersRequest
-	99,  // 157: sipmesh.api.v1.OperatorAPI.GetWorker:input_type -> sipmesh.api.v1.GetWorkerRequest
-	101, // 158: sipmesh.api.v1.OperatorAPI.DrainWorker:input_type -> sipmesh.api.v1.DrainWorkerRequest
-	105, // 159: sipmesh.api.v1.OperatorAPI.ListAIWorkers:input_type -> sipmesh.api.v1.ListAIWorkersRequest
-	107, // 160: sipmesh.api.v1.OperatorAPI.SubscribeEvents:input_type -> sipmesh.api.v1.SubscribeEventsRequest
-	109, // 161: sipmesh.api.v1.OperatorAPI.StreamSipTrace:input_type -> sipmesh.api.v1.StreamSipTraceRequest
-	111, // 162: sipmesh.api.v1.OperatorAPI.ListCallArchive:input_type -> sipmesh.api.v1.ListCallArchiveRequest
-	114, // 163: sipmesh.api.v1.OperatorAPI.GetCallArtifactURL:input_type -> sipmesh.api.v1.GetCallArtifactURLRequest
-	116, // 164: sipmesh.api.v1.SipmeshConfigSource.PullConfigSet:input_type -> sipmesh.api.v1.PullConfigSetRequest
-	18,  // 165: sipmesh.api.v1.OperatorAPI.GetOperatorConfig:output_type -> sipmesh.api.v1.OperatorConfigResponse
-	22,  // 166: sipmesh.api.v1.OperatorAPI.WriteConfig:output_type -> sipmesh.api.v1.WriteConfigResponse
-	26,  // 167: sipmesh.api.v1.OperatorAPI.ImportConfig:output_type -> sipmesh.api.v1.ImportConfigResponse
-	78,  // 168: sipmesh.api.v1.OperatorAPI.ListTrunks:output_type -> sipmesh.api.v1.ListTrunksResponse
-	28,  // 169: sipmesh.api.v1.OperatorAPI.GetTrunk:output_type -> sipmesh.api.v1.Trunk
-	81,  // 170: sipmesh.api.v1.OperatorAPI.DescribeTrunk:output_type -> sipmesh.api.v1.DescribeTrunkResponse
-	83,  // 171: sipmesh.api.v1.OperatorAPI.ListPipelines:output_type -> sipmesh.api.v1.ListPipelinesResponse
-	44,  // 172: sipmesh.api.v1.OperatorAPI.GetPipeline:output_type -> sipmesh.api.v1.Pipeline
-	86,  // 173: sipmesh.api.v1.OperatorAPI.ListRoutes:output_type -> sipmesh.api.v1.ListRoutesResponse
-	88,  // 174: sipmesh.api.v1.OperatorAPI.OriginateCall:output_type -> sipmesh.api.v1.OriginateCallResponseV2
-	90,  // 175: sipmesh.api.v1.OperatorAPI.ListCalls:output_type -> sipmesh.api.v1.ListCallsResponse
-	93,  // 176: sipmesh.api.v1.OperatorAPI.GetCall:output_type -> sipmesh.api.v1.CallDetail
-	95,  // 177: sipmesh.api.v1.OperatorAPI.HangupCall:output_type -> sipmesh.api.v1.HangupCallResponse
-	97,  // 178: sipmesh.api.v1.OperatorAPI.ListWorkers:output_type -> sipmesh.api.v1.ListWorkersResponse
-	100, // 179: sipmesh.api.v1.OperatorAPI.GetWorker:output_type -> sipmesh.api.v1.WorkerDetail
-	102, // 180: sipmesh.api.v1.OperatorAPI.DrainWorker:output_type -> sipmesh.api.v1.DrainWorkerResponse
-	106, // 181: sipmesh.api.v1.OperatorAPI.ListAIWorkers:output_type -> sipmesh.api.v1.ListAIWorkersResponse
-	108, // 182: sipmesh.api.v1.OperatorAPI.SubscribeEvents:output_type -> sipmesh.api.v1.Event
-	110, // 183: sipmesh.api.v1.OperatorAPI.StreamSipTrace:output_type -> sipmesh.api.v1.SipTraceEvent
-	112, // 184: sipmesh.api.v1.OperatorAPI.ListCallArchive:output_type -> sipmesh.api.v1.ListCallArchiveResponse
-	115, // 185: sipmesh.api.v1.OperatorAPI.GetCallArtifactURL:output_type -> sipmesh.api.v1.GetCallArtifactURLResponse
-	117, // 186: sipmesh.api.v1.SipmeshConfigSource.PullConfigSet:output_type -> sipmesh.api.v1.PullConfigSetResponse
-	165, // [165:187] is the sub-list for method output_type
-	143, // [143:165] is the sub-list for method input_type
-	143, // [143:143] is the sub-list for extension type_name
-	143, // [143:143] is the sub-list for extension extendee
-	0,   // [0:143] is the sub-list for field type_name
+	120, // 74: sipmesh.api.v1.PipelineStep.wait_for_greeting:type_name -> sipmesh.api.v1.WaitForGreetingStep
+	124, // 75: sipmesh.api.v1.SayStep.text_by_language:type_name -> sipmesh.api.v1.SayStep.TextByLanguageEntry
+	125, // 76: sipmesh.api.v1.SayStep.voice_by_language:type_name -> sipmesh.api.v1.SayStep.VoiceByLanguageEntry
+	126, // 77: sipmesh.api.v1.ConverseStep.system_by_language:type_name -> sipmesh.api.v1.ConverseStep.SystemByLanguageEntry
+	127, // 78: sipmesh.api.v1.ConverseStep.voice_by_language:type_name -> sipmesh.api.v1.ConverseStep.VoiceByLanguageEntry
+	128, // 79: sipmesh.api.v1.ConverseStep.fallback_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.FallbackTextByLanguageEntry
+	129, // 80: sipmesh.api.v1.ConverseStep.ack_intro_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.AckIntroTextByLanguageEntry
+	130, // 81: sipmesh.api.v1.ConverseStep.slow_ack_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.SlowAckTextByLanguageEntry
+	131, // 82: sipmesh.api.v1.ConverseStep.reprompt_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.RepromptTextByLanguageEntry
+	132, // 83: sipmesh.api.v1.ConverseStep.on_max_turns_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.OnMaxTurnsTextByLanguageEntry
+	133, // 84: sipmesh.api.v1.ConverseStep.unsupported_lang_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.UnsupportedLangTextByLanguageEntry
+	53,  // 85: sipmesh.api.v1.ConverseStep.interrupt_on_custom_field:type_name -> sipmesh.api.v1.ConverseStepInterruptOnCustomField
+	52,  // 86: sipmesh.api.v1.ConverseStep.ack_tone:type_name -> sipmesh.api.v1.SineToneSpec
+	134, // 87: sipmesh.api.v1.ConverseStep.fallback_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.FallbackTextPoolByLanguageEntry
+	135, // 88: sipmesh.api.v1.ConverseStep.ack_intro_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.AckIntroTextPoolByLanguageEntry
+	136, // 89: sipmesh.api.v1.ConverseStep.slow_ack_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.SlowAckTextPoolByLanguageEntry
+	137, // 90: sipmesh.api.v1.ConverseStep.reprompt_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.RepromptTextPoolByLanguageEntry
+	138, // 91: sipmesh.api.v1.ConverseStep.on_max_turns_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.OnMaxTurnsTextPoolByLanguageEntry
+	139, // 92: sipmesh.api.v1.ConverseStep.unsupported_lang_text_pool_by_language:type_name -> sipmesh.api.v1.ConverseStep.UnsupportedLangTextPoolByLanguageEntry
+	140, // 93: sipmesh.api.v1.ConverseStep.pre_done_speak_text_by_language:type_name -> sipmesh.api.v1.ConverseStep.PreDoneSpeakTextByLanguageEntry
+	55,  // 94: sipmesh.api.v1.DialStep.waiting:type_name -> sipmesh.api.v1.WaitingPolicy
+	43,  // 95: sipmesh.api.v1.DialStep.caller_id:type_name -> sipmesh.api.v1.CallerID
+	9,   // 96: sipmesh.api.v1.WaitingPolicy.mode:type_name -> sipmesh.api.v1.WaitingPolicy.Mode
+	59,  // 97: sipmesh.api.v1.BranchStep.cases:type_name -> sipmesh.api.v1.BranchCase
+	48,  // 98: sipmesh.api.v1.BranchStep.default_steps:type_name -> sipmesh.api.v1.PipelineStep
+	141, // 99: sipmesh.api.v1.BranchCase.when:type_name -> sipmesh.api.v1.BranchCase.WhenEntry
+	48,  // 100: sipmesh.api.v1.BranchCase.steps:type_name -> sipmesh.api.v1.PipelineStep
+	142, // 101: sipmesh.api.v1.BranchCase.when_match:type_name -> sipmesh.api.v1.BranchCase.WhenMatchEntry
+	10,  // 102: sipmesh.api.v1.HoldStep.mode:type_name -> sipmesh.api.v1.HoldStep.Mode
+	11,  // 103: sipmesh.api.v1.HTTPCallbackStep.method:type_name -> sipmesh.api.v1.HTTPCallbackStep.Method
+	143, // 104: sipmesh.api.v1.HTTPCallbackStep.headers:type_name -> sipmesh.api.v1.HTTPCallbackStep.HeadersEntry
+	12,  // 105: sipmesh.api.v1.HTTPCallbackStep.on_error:type_name -> sipmesh.api.v1.HTTPCallbackStep.OnError
+	52,  // 106: sipmesh.api.v1.RecordStep.pre_record_tone:type_name -> sipmesh.api.v1.SineToneSpec
+	13,  // 107: sipmesh.api.v1.TransferStep.mode:type_name -> sipmesh.api.v1.TransferStep.Mode
+	144, // 108: sipmesh.api.v1.SubPipelineStep.args:type_name -> sipmesh.api.v1.SubPipelineStep.ArgsEntry
+	48,  // 109: sipmesh.api.v1.QueueStep.on_timeout_steps:type_name -> sipmesh.api.v1.PipelineStep
+	28,  // 110: sipmesh.api.v1.ListTrunksResponse.trunks:type_name -> sipmesh.api.v1.Trunk
+	44,  // 111: sipmesh.api.v1.ListPipelinesResponse.pipelines:type_name -> sipmesh.api.v1.Pipeline
+	36,  // 112: sipmesh.api.v1.ListRoutesResponse.routes:type_name -> sipmesh.api.v1.Route
+	43,  // 113: sipmesh.api.v1.OriginateCallRequestV2.caller_id:type_name -> sipmesh.api.v1.CallerID
+	91,  // 114: sipmesh.api.v1.ListCallsResponse.calls:type_name -> sipmesh.api.v1.CallSummary
+	91,  // 115: sipmesh.api.v1.CallDetail.summary:type_name -> sipmesh.api.v1.CallSummary
+	98,  // 116: sipmesh.api.v1.ListWorkersResponse.workers:type_name -> sipmesh.api.v1.WorkerSummaryV2
+	98,  // 117: sipmesh.api.v1.WorkerDetail.summary:type_name -> sipmesh.api.v1.WorkerSummaryV2
+	103, // 118: sipmesh.api.v1.AIWorkerCapability.voices:type_name -> sipmesh.api.v1.VoiceInfo
+	104, // 119: sipmesh.api.v1.ListAIWorkersResponse.workers:type_name -> sipmesh.api.v1.AIWorkerCapability
+	113, // 120: sipmesh.api.v1.ListCallArchiveResponse.calls:type_name -> sipmesh.api.v1.CallArchiveSummary
+	0,   // 121: sipmesh.api.v1.GetCallArtifactURLRequest.kind:type_name -> sipmesh.api.v1.CallArtifactKind
+	15,  // 122: sipmesh.api.v1.PullConfigSetResponse.config:type_name -> sipmesh.api.v1.OperatorConfig
+	145, // 123: sipmesh.api.v1.WhisperStep.text_by_language:type_name -> sipmesh.api.v1.WhisperStep.TextByLanguageEntry
+	146, // 124: sipmesh.api.v1.WhisperStep.text_pool_by_language:type_name -> sipmesh.api.v1.WhisperStep.TextPoolByLanguageEntry
+	147, // 125: sipmesh.api.v1.WhisperStep.voice_by_language:type_name -> sipmesh.api.v1.WhisperStep.VoiceByLanguageEntry
+	14,  // 126: sipmesh.api.v1.WhisperStep.on_timeout:type_name -> sipmesh.api.v1.WhisperStep.TimeoutBehavior
+	148, // 127: sipmesh.api.v1.WhisperStep.accept_phrases_by_language:type_name -> sipmesh.api.v1.WhisperStep.AcceptPhrasesByLanguageEntry
+	149, // 128: sipmesh.api.v1.WhisperStep.reject_phrases_by_language:type_name -> sipmesh.api.v1.WhisperStep.RejectPhrasesByLanguageEntry
+	150, // 129: sipmesh.api.v1.WhisperStep.repeat_phrases_by_language:type_name -> sipmesh.api.v1.WhisperStep.RepeatPhrasesByLanguageEntry
+	48,  // 130: sipmesh.api.v1.OnPeerStep.steps:type_name -> sipmesh.api.v1.PipelineStep
+	45,  // 131: sipmesh.api.v1.Pipeline.VoicePoolsByLanguageEntry.value:type_name -> sipmesh.api.v1.VoicePool
+	47,  // 132: sipmesh.api.v1.Pipeline.BargeInAckTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 133: sipmesh.api.v1.ConverseStep.FallbackTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 134: sipmesh.api.v1.ConverseStep.AckIntroTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 135: sipmesh.api.v1.ConverseStep.SlowAckTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 136: sipmesh.api.v1.ConverseStep.RepromptTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 137: sipmesh.api.v1.ConverseStep.OnMaxTurnsTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 138: sipmesh.api.v1.ConverseStep.UnsupportedLangTextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	60,  // 139: sipmesh.api.v1.BranchCase.WhenMatchEntry.value:type_name -> sipmesh.api.v1.Match
+	47,  // 140: sipmesh.api.v1.WhisperStep.TextPoolByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 141: sipmesh.api.v1.WhisperStep.AcceptPhrasesByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 142: sipmesh.api.v1.WhisperStep.RejectPhrasesByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	47,  // 143: sipmesh.api.v1.WhisperStep.RepeatPhrasesByLanguageEntry.value:type_name -> sipmesh.api.v1.StringList
+	17,  // 144: sipmesh.api.v1.OperatorAPI.GetOperatorConfig:input_type -> sipmesh.api.v1.GetOperatorConfigRequest
+	19,  // 145: sipmesh.api.v1.OperatorAPI.WriteConfig:input_type -> sipmesh.api.v1.WriteConfigRequest
+	25,  // 146: sipmesh.api.v1.OperatorAPI.ImportConfig:input_type -> sipmesh.api.v1.ImportConfigRequest
+	77,  // 147: sipmesh.api.v1.OperatorAPI.ListTrunks:input_type -> sipmesh.api.v1.ListTrunksRequest
+	79,  // 148: sipmesh.api.v1.OperatorAPI.GetTrunk:input_type -> sipmesh.api.v1.GetTrunkRequest
+	80,  // 149: sipmesh.api.v1.OperatorAPI.DescribeTrunk:input_type -> sipmesh.api.v1.DescribeTrunkRequest
+	82,  // 150: sipmesh.api.v1.OperatorAPI.ListPipelines:input_type -> sipmesh.api.v1.ListPipelinesRequest
+	84,  // 151: sipmesh.api.v1.OperatorAPI.GetPipeline:input_type -> sipmesh.api.v1.GetPipelineRequest
+	85,  // 152: sipmesh.api.v1.OperatorAPI.ListRoutes:input_type -> sipmesh.api.v1.ListRoutesRequest
+	87,  // 153: sipmesh.api.v1.OperatorAPI.OriginateCall:input_type -> sipmesh.api.v1.OriginateCallRequestV2
+	89,  // 154: sipmesh.api.v1.OperatorAPI.ListCalls:input_type -> sipmesh.api.v1.ListCallsRequest
+	92,  // 155: sipmesh.api.v1.OperatorAPI.GetCall:input_type -> sipmesh.api.v1.GetCallRequest
+	94,  // 156: sipmesh.api.v1.OperatorAPI.HangupCall:input_type -> sipmesh.api.v1.HangupCallRequest
+	96,  // 157: sipmesh.api.v1.OperatorAPI.ListWorkers:input_type -> sipmesh.api.v1.ListWorkersRequest
+	99,  // 158: sipmesh.api.v1.OperatorAPI.GetWorker:input_type -> sipmesh.api.v1.GetWorkerRequest
+	101, // 159: sipmesh.api.v1.OperatorAPI.DrainWorker:input_type -> sipmesh.api.v1.DrainWorkerRequest
+	105, // 160: sipmesh.api.v1.OperatorAPI.ListAIWorkers:input_type -> sipmesh.api.v1.ListAIWorkersRequest
+	107, // 161: sipmesh.api.v1.OperatorAPI.SubscribeEvents:input_type -> sipmesh.api.v1.SubscribeEventsRequest
+	109, // 162: sipmesh.api.v1.OperatorAPI.StreamSipTrace:input_type -> sipmesh.api.v1.StreamSipTraceRequest
+	111, // 163: sipmesh.api.v1.OperatorAPI.ListCallArchive:input_type -> sipmesh.api.v1.ListCallArchiveRequest
+	114, // 164: sipmesh.api.v1.OperatorAPI.GetCallArtifactURL:input_type -> sipmesh.api.v1.GetCallArtifactURLRequest
+	116, // 165: sipmesh.api.v1.SipmeshConfigSource.PullConfigSet:input_type -> sipmesh.api.v1.PullConfigSetRequest
+	18,  // 166: sipmesh.api.v1.OperatorAPI.GetOperatorConfig:output_type -> sipmesh.api.v1.OperatorConfigResponse
+	22,  // 167: sipmesh.api.v1.OperatorAPI.WriteConfig:output_type -> sipmesh.api.v1.WriteConfigResponse
+	26,  // 168: sipmesh.api.v1.OperatorAPI.ImportConfig:output_type -> sipmesh.api.v1.ImportConfigResponse
+	78,  // 169: sipmesh.api.v1.OperatorAPI.ListTrunks:output_type -> sipmesh.api.v1.ListTrunksResponse
+	28,  // 170: sipmesh.api.v1.OperatorAPI.GetTrunk:output_type -> sipmesh.api.v1.Trunk
+	81,  // 171: sipmesh.api.v1.OperatorAPI.DescribeTrunk:output_type -> sipmesh.api.v1.DescribeTrunkResponse
+	83,  // 172: sipmesh.api.v1.OperatorAPI.ListPipelines:output_type -> sipmesh.api.v1.ListPipelinesResponse
+	44,  // 173: sipmesh.api.v1.OperatorAPI.GetPipeline:output_type -> sipmesh.api.v1.Pipeline
+	86,  // 174: sipmesh.api.v1.OperatorAPI.ListRoutes:output_type -> sipmesh.api.v1.ListRoutesResponse
+	88,  // 175: sipmesh.api.v1.OperatorAPI.OriginateCall:output_type -> sipmesh.api.v1.OriginateCallResponseV2
+	90,  // 176: sipmesh.api.v1.OperatorAPI.ListCalls:output_type -> sipmesh.api.v1.ListCallsResponse
+	93,  // 177: sipmesh.api.v1.OperatorAPI.GetCall:output_type -> sipmesh.api.v1.CallDetail
+	95,  // 178: sipmesh.api.v1.OperatorAPI.HangupCall:output_type -> sipmesh.api.v1.HangupCallResponse
+	97,  // 179: sipmesh.api.v1.OperatorAPI.ListWorkers:output_type -> sipmesh.api.v1.ListWorkersResponse
+	100, // 180: sipmesh.api.v1.OperatorAPI.GetWorker:output_type -> sipmesh.api.v1.WorkerDetail
+	102, // 181: sipmesh.api.v1.OperatorAPI.DrainWorker:output_type -> sipmesh.api.v1.DrainWorkerResponse
+	106, // 182: sipmesh.api.v1.OperatorAPI.ListAIWorkers:output_type -> sipmesh.api.v1.ListAIWorkersResponse
+	108, // 183: sipmesh.api.v1.OperatorAPI.SubscribeEvents:output_type -> sipmesh.api.v1.Event
+	110, // 184: sipmesh.api.v1.OperatorAPI.StreamSipTrace:output_type -> sipmesh.api.v1.SipTraceEvent
+	112, // 185: sipmesh.api.v1.OperatorAPI.ListCallArchive:output_type -> sipmesh.api.v1.ListCallArchiveResponse
+	115, // 186: sipmesh.api.v1.OperatorAPI.GetCallArtifactURL:output_type -> sipmesh.api.v1.GetCallArtifactURLResponse
+	117, // 187: sipmesh.api.v1.SipmeshConfigSource.PullConfigSet:output_type -> sipmesh.api.v1.PullConfigSetResponse
+	166, // [166:188] is the sub-list for method output_type
+	144, // [144:166] is the sub-list for method input_type
+	144, // [144:144] is the sub-list for extension type_name
+	144, // [144:144] is the sub-list for extension extendee
+	0,   // [0:144] is the sub-list for field type_name
 }
 
 func init() { file_sipmesh_api_v1_operatorapi_proto_init() }
@@ -10154,7 +10295,7 @@ func file_sipmesh_api_v1_operatorapi_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sipmesh_api_v1_operatorapi_proto_rawDesc), len(file_sipmesh_api_v1_operatorapi_proto_rawDesc)),
 			NumEnums:      15,
-			NumMessages:   135,
+			NumMessages:   136,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

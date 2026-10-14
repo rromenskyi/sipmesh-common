@@ -963,6 +963,7 @@ message PipelineStep {
   QueueStep    queue     = 23;
   WhisperStep  whisper   = 24;
   OnPeerStep   on_peer   = 25;
+  WaitForGreetingStep wait_for_greeting = 26;
   // Add new step kinds here as they land in the engine.
 }
 
@@ -2321,4 +2322,60 @@ message OnPeerStep {
   // before running these; restores caller's primitives after
   // (including on error). CustomFields stay shared.
   repeated PipelineStep steps = 2;
+}
+
+// =============================================================================
+// WaitForGreetingStep — listen to the callee right after answer and
+// end once their greeting is over, so the next step (typically
+// play_file / say on an outbound call) starts after the callee's
+// "Hello?" instead of talking over it.
+//
+// Canonical outbound opening:
+//
+//   - wait_for_greeting: {}
+//   - branch:
+//       cases:
+//         - when: { custom.greeting_outcome: long }
+//           steps: [ hangup: {} ]
+//   - play_file: { path: promo.wav }
+//
+// Voice activity and timing only: no STT, no LLM. Outcomes:
+//   - "human":  voiced speech (onset) followed by endpoint_silence_ms
+//               of silence — a short greeting, then a pause.
+//   - "silent": no onset within no_speech_timeout_ms of step start.
+//   - "long":   still talking max_greeting_ms after onset — the
+//               cadence of a voicemail greeting, an IVR or a
+//               talkative person.
+// The outcome lands in CallState.CustomFields[result_field]; the
+// step also writes CustomFields["greeting_decision_ms"] = ms from
+// step start to the verdict. Routing on the outcome is done by a
+// following BranchStep with a `custom.<result_field>` predicate.
+// The step never fails the flow; a hangup during the wait just
+// ends the call.
+//
+// First slice of the engine's AMD design (DetectAnswerStep): a
+// later real-time AMD may add content and beep detection without
+// changing what human / silent / long mean.
+//
+// Every field is optional; zero / empty means the default.
+message WaitForGreetingStep {
+  // Consecutive voiced audio needed before the callee counts as
+  // speaking (onset). Shorter blips (clicks, breaths) are ignored.
+  // Default 200.
+  uint32 min_speech_ms = 1;
+  // Silence after onset that ends the greeting ("human"). Same
+  // name and jitter-buffer compensation as ListenStep. Default 500.
+  uint32 endpoint_silence_ms = 2;
+  // Measured from step start: no onset by then gives "silent".
+  // Default 3000.
+  uint32 no_speech_timeout_ms = 3;
+  // Measured from onset: still talking at this point gives "long".
+  // Default 3500.
+  uint32 max_greeting_ms = 4;
+  // CallState.CustomFields key the outcome is written to, same
+  // convention as RecordStep / TransferStep. Must be an identifier
+  // (letters, digits, underscore; not starting with a digit) so it
+  // is addressable as `custom.<key>` and `${custom.<key>}`.
+  // Default "greeting_outcome".
+  string result_field = 5;
 }

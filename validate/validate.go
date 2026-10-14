@@ -838,9 +838,8 @@ func validateStepDiscriminators(s *sipmeshapiv1.PipelineStep, path string, out *
 			})
 		}
 	}
-
 	if wg := s.GetWaitForGreeting(); wg != nil {
-		if rf := wg.GetResultField(); rf != "" && !customFieldKeyRe.MatchString(rf) {
+		if rf := wg.GetResultField(); rf != "" && !greetingResultFieldRe.MatchString(rf) {
 			*out = append(*out, &sipmeshapiv1.ConfigDiagnostic{
 				Severity: sipmeshapiv1.ConfigDiagnostic_SEVERITY_ERROR,
 				Message: "wait_for_greeting step result_field must be an identifier " +
@@ -869,10 +868,11 @@ func validateStepDiscriminators(s *sipmeshapiv1.PipelineStep, path string, out *
 	}
 }
 
-// customFieldKeyRe is the shape a step-authored CustomFields key must
-// have to be addressable as `custom.<key>` in a branch predicate and
-// as `${custom.<key>}` in a template.
-var customFieldKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// greetingResultFieldRe is the shape wait_for_greeting's result_field
+// must have: an identifier, so the outcome key is addressable as
+// `custom.<key>` in a branch predicate and as `${custom.<key>}` in a
+// template.
+var greetingResultFieldRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // branchPredicateKeys is the closed set of typed predicate field names
 // branchPredicateSchema accepts. `custom.<field>` keys are matched

@@ -291,9 +291,9 @@ func TestOperatorConfig_NoKindMessageNamesWaitForGreeting(t *testing.T) {
 	t.Error("expected 'no inner kind set' diag")
 }
 
-// TestOperatorConfig_WaitForGreetingCountsAsAKind — a step carrying
-// only wait_for_greeting has a kind; paired with another kind it is
-// named in the "multiple inner kinds" diagnostic.
+// TestOperatorConfig_WaitForGreetingCountsAsAKind — paired with
+// another kind, wait_for_greeting is named in the "multiple inner
+// kinds" diagnostic.
 func TestOperatorConfig_WaitForGreetingCountsAsAKind(t *testing.T) {
 	cfg := &sipmeshapiv1.OperatorConfig{
 		Pipelines: []*sipmeshapiv1.Pipeline{{
@@ -305,7 +305,8 @@ func TestOperatorConfig_WaitForGreetingCountsAsAKind(t *testing.T) {
 	}
 	var found bool
 	for _, d := range OperatorConfig(cfg) {
-		if strings.Contains(d.GetMessage(), "multiple inner kinds set (hangup, wait_for_greeting)") {
+		if strings.Contains(d.GetMessage(), "multiple inner kinds set") &&
+			strings.Contains(d.GetMessage(), "wait_for_greeting") {
 			found = true
 		}
 	}

@@ -1320,6 +1320,20 @@ message PlayFileStep {
   // `WAV_ROOT_DIR` env, default `/etc/sipmesh/wav/`). Examples:
   // "greetings/welcome.wav", "hold/jazz.wav".
   string path = 1;
+  // The words the clip speaks, when it was rendered from text (TTS).
+  // The operator backend fills this from its audio library at config
+  // build time when the clip has saved text, overwriting a hand-set
+  // value; otherwise a hand-set value is kept. Non-empty: once
+  // playback finishes — or is cut short by a hangup — the engine logs
+  // it as a bot turn in the call transcript, exactly as SayStep logs
+  // its text. A playback failure, or an empty path (step skipped),
+  // logs nothing. Empty (default): no transcript line — uploaded
+  // recordings, music, hold and ambience beds. A single text rather
+  // than SayStep's per-language map: a clip is one fixed recording.
+  string text = 2;
+  // BCP-47 language of `text` (e.g. "en-US"), carried on the logged
+  // bot turn. Optional; ignored when `text` is empty.
+  string language = 3;
 }
 
 // HTTPCallbackStep — call out to an external HTTP endpoint mid-pipeline

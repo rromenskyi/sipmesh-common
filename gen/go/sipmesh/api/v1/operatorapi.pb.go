@@ -5385,7 +5385,21 @@ type PlayFileStep struct {
 	// Path relative to the edge WAV root (chart's
 	// `WAV_ROOT_DIR` env, default `/etc/sipmesh/wav/`). Examples:
 	// "greetings/welcome.wav", "hold/jazz.wav".
-	Path          string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// The words the clip speaks, when it was rendered from text (TTS).
+	// The operator backend fills this from its audio library at config
+	// build time when the clip has saved text, overwriting a hand-set
+	// value; otherwise a hand-set value is kept. Non-empty: once
+	// playback finishes — or is cut short by a hangup — the engine logs
+	// it as a bot turn in the call transcript, exactly as SayStep logs
+	// its text. A playback failure, or an empty path (step skipped),
+	// logs nothing. Empty (default): no transcript line — uploaded
+	// recordings, music, hold and ambience beds. A single text rather
+	// than SayStep's per-language map: a clip is one fixed recording.
+	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// BCP-47 language of `text` (e.g. "en-US"), carried on the logged
+	// bot turn. Optional; ignored when `text` is empty.
+	Language      string `protobuf:"bytes,3,opt,name=language,proto3" json:"language,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5423,6 +5437,20 @@ func (*PlayFileStep) Descriptor() ([]byte, []int) {
 func (x *PlayFileStep) GetPath() string {
 	if x != nil {
 		return x.Path
+	}
+	return ""
+}
+
+func (x *PlayFileStep) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *PlayFileStep) GetLanguage() string {
+	if x != nil {
+		return x.Language
 	}
 	return ""
 }
@@ -9595,9 +9623,11 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\tPauseStep\x12\x0e\n" +
 	"\x02ms\x18\x01 \x01(\rR\x02ms\"\f\n" +
 	"\n" +
-	"AnswerStep\"\"\n" +
+	"AnswerStep\"R\n" +
 	"\fPlayFileStep\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"\x8a\x05\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x1a\n" +
+	"\blanguage\x18\x03 \x01(\tR\blanguage\"\x8a\x05\n" +
 	"\x10HTTPCallbackStep\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x12?\n" +
 	"\x06method\x18\x02 \x01(\x0e2'.sipmesh.api.v1.HTTPCallbackStep.MethodR\x06method\x12G\n" +

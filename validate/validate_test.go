@@ -270,6 +270,37 @@ func TestOperatorConfig_WaitForGreeting(t *testing.T) {
 	}
 }
 
+// TestOperatorConfig_PlayFileText — text/language are optional
+// metadata (the words a rendered clip speaks, logged as a bot turn),
+// so every combination is valid: neither, both, and text without a
+// language.
+func TestOperatorConfig_PlayFileText(t *testing.T) {
+	cases := []struct {
+		name string
+		step *sipmeshapiv1.PlayFileStep
+	}{
+		{name: "no text, no language", step: &sipmeshapiv1.PlayFileStep{Path: "greetings/closed.wav"}},
+		{name: "text and language", step: &sipmeshapiv1.PlayFileStep{Path: "greetings/closed.wav", Text: "We are closed today.", Language: "en-US"}},
+		{name: "text without language", step: &sipmeshapiv1.PlayFileStep{Path: "greetings/closed.wav", Text: "We are closed today."}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &sipmeshapiv1.OperatorConfig{
+				Pipelines: []*sipmeshapiv1.Pipeline{{
+					Name: "closed",
+					Steps: []*sipmeshapiv1.PipelineStep{
+						{PlayFile: tc.step},
+						{Hangup: &sipmeshapiv1.HangupStep{}},
+					},
+				}},
+			}
+			for _, d := range OperatorConfig(cfg) {
+				t.Errorf("unexpected diag: %s @ %s", d.GetMessage(), d.GetFieldPath())
+			}
+		})
+	}
+}
+
 // TestOperatorConfig_NoKindMessageNamesWaitForGreeting — the "exactly
 // one of" list is what authors read when a step lost its kind; a new
 // kind missing from it reads as unsupported.

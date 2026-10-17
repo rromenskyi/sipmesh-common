@@ -2354,8 +2354,11 @@ message OnPeerStep {
 //   - play_file: { path: promo.wav }
 //
 // Voice activity and timing only: no STT, no LLM. Outcomes:
-//   - "human":  voiced speech (onset) followed by endpoint_silence_ms
-//               of silence — a short greeting, then a pause.
+//   - "short":  voiced speech (onset) followed by endpoint_silence_ms
+//               of silence — a short greeting, then a pause. It
+//               describes what was heard, not who answered: a
+//               machine greeting that opens with a pause gives it
+//               too. Engines before the rename wrote "human".
 //   - "silent": no onset within no_speech_timeout_ms of step start.
 //   - "long":   still talking max_greeting_ms after onset — the
 //               cadence of a voicemail greeting, an IVR or a
@@ -2369,7 +2372,7 @@ message OnPeerStep {
 //
 // First slice of the engine's AMD design (DetectAnswerStep): a
 // later real-time AMD may add content and beep detection without
-// changing what human / silent / long mean.
+// changing what short / silent / long mean.
 //
 // Every field is optional; zero / empty means the default.
 message WaitForGreetingStep {
@@ -2377,7 +2380,7 @@ message WaitForGreetingStep {
   // speaking (onset). Shorter blips (clicks, breaths) are ignored.
   // Default 200.
   uint32 min_speech_ms = 1;
-  // Silence after onset that ends the greeting ("human"). Same
+  // Silence after onset that ends the greeting ("short"). Same
   // name and jitter-buffer compensation as ListenStep. Default 500.
   uint32 endpoint_silence_ms = 2;
   // Measured from step start: no onset by then gives "silent".

@@ -9055,8 +9055,11 @@ func (x *OnPeerStep) GetSteps() []*PipelineStep {
 //   - play_file: { path: promo.wav }
 //
 // Voice activity and timing only: no STT, no LLM. Outcomes:
-//   - "human":  voiced speech (onset) followed by endpoint_silence_ms
-//     of silence — a short greeting, then a pause.
+//   - "short":  voiced speech (onset) followed by endpoint_silence_ms
+//     of silence — a short greeting, then a pause. It
+//     describes what was heard, not who answered: a
+//     machine greeting that opens with a pause gives it
+//     too. Engines before the rename wrote "human".
 //   - "silent": no onset within no_speech_timeout_ms of step start.
 //   - "long":   still talking max_greeting_ms after onset — the
 //     cadence of a voicemail greeting, an IVR or a
@@ -9071,7 +9074,7 @@ func (x *OnPeerStep) GetSteps() []*PipelineStep {
 //
 // First slice of the engine's AMD design (DetectAnswerStep): a
 // later real-time AMD may add content and beep detection without
-// changing what human / silent / long mean.
+// changing what short / silent / long mean.
 //
 // Every field is optional; zero / empty means the default.
 type WaitForGreetingStep struct {
@@ -9080,7 +9083,7 @@ type WaitForGreetingStep struct {
 	// speaking (onset). Shorter blips (clicks, breaths) are ignored.
 	// Default 200.
 	MinSpeechMs uint32 `protobuf:"varint,1,opt,name=min_speech_ms,json=minSpeechMs,proto3" json:"min_speech_ms,omitempty"`
-	// Silence after onset that ends the greeting ("human"). Same
+	// Silence after onset that ends the greeting ("short"). Same
 	// name and jitter-buffer compensation as ListenStep. Default 500.
 	EndpointSilenceMs uint32 `protobuf:"varint,2,opt,name=endpoint_silence_ms,json=endpointSilenceMs,proto3" json:"endpoint_silence_ms,omitempty"`
 	// Measured from step start: no onset by then gives "silent".

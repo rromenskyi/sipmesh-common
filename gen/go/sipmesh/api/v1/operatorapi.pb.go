@@ -6832,8 +6832,12 @@ type OriginateCallResponseV2 struct {
 	InternalCallId string                 `protobuf:"bytes,1,opt,name=internal_call_id,json=internalCallId,proto3" json:"internal_call_id,omitempty"`
 	SipStatus      uint32                 `protobuf:"varint,2,opt,name=sip_status,json=sipStatus,proto3" json:"sip_status,omitempty"`
 	Codec          string                 `protobuf:"bytes,3,opt,name=codec,proto3" json:"codec,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Internal call id allocated for this origination, set on non-2xx too
+	// (internal_call_id is set on 2xx only). The call's events carry it, so
+	// a failed dial can still be attributed. Empty when nothing was allocated.
+	AllocatedCallId string `protobuf:"bytes,4,opt,name=allocated_call_id,json=allocatedCallId,proto3" json:"allocated_call_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *OriginateCallResponseV2) Reset() {
@@ -6883,6 +6887,13 @@ func (x *OriginateCallResponseV2) GetSipStatus() uint32 {
 func (x *OriginateCallResponseV2) GetCodec() string {
 	if x != nil {
 		return x.Codec
+	}
+	return ""
+}
+
+func (x *OriginateCallResponseV2) GetAllocatedCallId() string {
+	if x != nil {
+		return x.AllocatedCallId
 	}
 	return ""
 }
@@ -9729,12 +9740,13 @@ const file_sipmesh_api_v1_operatorapi_proto_rawDesc = "" +
 	"\vcodec_hints\x18\x04 \x03(\tR\n" +
 	"codecHints\x12%\n" +
 	"\x0einvite_timeout\x18\x05 \x01(\tR\rinviteTimeout\x125\n" +
-	"\tcaller_id\x18\x06 \x01(\v2\x18.sipmesh.api.v1.CallerIDR\bcallerId\"x\n" +
+	"\tcaller_id\x18\x06 \x01(\v2\x18.sipmesh.api.v1.CallerIDR\bcallerId\"\xa4\x01\n" +
 	"\x17OriginateCallResponseV2\x12(\n" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\x12\x1d\n" +
 	"\n" +
 	"sip_status\x18\x02 \x01(\rR\tsipStatus\x12\x14\n" +
-	"\x05codec\x18\x03 \x01(\tR\x05codec\"j\n" +
+	"\x05codec\x18\x03 \x01(\tR\x05codec\x12*\n" +
+	"\x11allocated_call_id\x18\x04 \x01(\tR\x0fallocatedCallId\"j\n" +
 	"\x10ListCallsRequest\x12\x16\n" +
 	"\x06worker\x18\x01 \x01(\tR\x06worker\x12\x14\n" +
 	"\x05trunk\x18\x02 \x01(\tR\x05trunk\x12\x12\n" +

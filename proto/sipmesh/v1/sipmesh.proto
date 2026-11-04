@@ -1103,6 +1103,12 @@ message OriginateCallResponse {
   string sip_reason        = 3;
   // Codec the trunk picked from our offer. Empty on non-2xx.
   string codec             = 4;
+  // Internal call id the engine allocated for this origination, set on
+  // non-2xx too (internal_call_id stays empty there). The call's
+  // CallStarted/CallEnded events carry this id, so a caller can attribute
+  // a failed dial (busy, unavailable, timeout) to whatever placed it.
+  // Empty when nothing was allocated (transit, or failure before alloc).
+  string allocated_call_id = 5;
 }
 
 // GetCPSStatusRequest is empty — the proxy reports every carrier IP

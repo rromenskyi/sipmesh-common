@@ -4976,9 +4976,15 @@ type OriginateCallResponse struct {
 	// SIP reason phrase for human display.
 	SipReason string `protobuf:"bytes,3,opt,name=sip_reason,json=sipReason,proto3" json:"sip_reason,omitempty"`
 	// Codec the trunk picked from our offer. Empty on non-2xx.
-	Codec         string `protobuf:"bytes,4,opt,name=codec,proto3" json:"codec,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Codec string `protobuf:"bytes,4,opt,name=codec,proto3" json:"codec,omitempty"`
+	// Internal call id the engine allocated for this origination, set on
+	// non-2xx too (internal_call_id stays empty there). The call's
+	// CallStarted/CallEnded events carry this id, so a caller can attribute
+	// a failed dial (busy, unavailable, timeout) to whatever placed it.
+	// Empty when nothing was allocated (transit, or failure before alloc).
+	AllocatedCallId string `protobuf:"bytes,5,opt,name=allocated_call_id,json=allocatedCallId,proto3" json:"allocated_call_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *OriginateCallResponse) Reset() {
@@ -5035,6 +5041,13 @@ func (x *OriginateCallResponse) GetSipReason() string {
 func (x *OriginateCallResponse) GetCodec() string {
 	if x != nil {
 		return x.Codec
+	}
+	return ""
+}
+
+func (x *OriginateCallResponse) GetAllocatedCallId() string {
+	if x != nil {
+		return x.AllocatedCallId
 	}
 	return ""
 }
@@ -7526,14 +7539,15 @@ const file_sipmesh_v1_sipmesh_proto_rawDesc = "" +
 	"\x0ecaller_id_user\x18\x05 \x01(\tR\fcallerIdUser\x12*\n" +
 	"\x11caller_id_display\x18\x06 \x01(\tR\x0fcallerIdDisplay\x120\n" +
 	"\x14operator_group_trunk\x18\a \x01(\tR\x12operatorGroupTrunk\x12*\n" +
-	"\x11invite_timeout_ms\x18\b \x01(\rR\x0finviteTimeoutMs\"\x95\x01\n" +
+	"\x11invite_timeout_ms\x18\b \x01(\rR\x0finviteTimeoutMs\"\xc1\x01\n" +
 	"\x15OriginateCallResponse\x12(\n" +
 	"\x10internal_call_id\x18\x01 \x01(\tR\x0einternalCallId\x12\x1d\n" +
 	"\n" +
 	"sip_status\x18\x02 \x01(\rR\tsipStatus\x12\x1d\n" +
 	"\n" +
 	"sip_reason\x18\x03 \x01(\tR\tsipReason\x12\x14\n" +
-	"\x05codec\x18\x04 \x01(\tR\x05codec\"\x15\n" +
+	"\x05codec\x18\x04 \x01(\tR\x05codec\x12*\n" +
+	"\x11allocated_call_id\x18\x05 \x01(\tR\x0fallocatedCallId\"\x15\n" +
 	"\x13GetCPSStatusRequest\"M\n" +
 	"\tCPSBucket\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x10\n" +

@@ -1784,6 +1784,10 @@ message OriginateCallResponseV2 {
   string internal_call_id = 1;
   uint32 sip_status       = 2;
   string codec            = 3;
+  // Internal call id allocated for this origination, set on non-2xx too
+  // (internal_call_id is set on 2xx only). The call's events carry it, so
+  // a failed dial can still be attributed. Empty when nothing was allocated.
+  string allocated_call_id = 4;
 }
 
 message ListCallsRequest {
